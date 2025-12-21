@@ -205,6 +205,93 @@ const Icons = {
 };
 
 // ============================================
+// STOCK WEIGHT CALCULATION UTILITIES
+// ============================================
+const StockCalculations = {
+  // Calculate volume in cubic meters based on stock form and dimensions
+  calculateVolume: (stockForm, dimensions) => {
+    if (!stockForm || !dimensions) return 0;
+
+    const d = dimensions;
+    const PI = Math.PI;
+
+    switch (stockForm) {
+      case 'round_bar':
+        // Volume = π × r² × length
+        if (!d.diameter || !d.length) return 0;
+        const radius = d.diameter / 2000; // mm to m
+        const length = d.length / 1000; // mm to m
+        return PI * radius * radius * length;
+
+      case 'flat_bar':
+        // Volume = width × thickness × length
+        if (!d.width || !d.thickness || !d.length) return 0;
+        return (d.width / 1000) * (d.thickness / 1000) * (d.length / 1000);
+
+      case 'plate':
+        // Volume = width × length × thickness
+        if (!d.width || !d.length || !d.thickness) return 0;
+        return (d.width / 1000) * (d.length / 1000) * (d.thickness / 1000);
+
+      case 'hex_bar':
+        // Volume = (3√3/2) × s² × length, where s is across flats / 2
+        if (!d.across_flats || !d.length) return 0;
+        const s = d.across_flats / 2000; // mm to m
+        const hexLength = d.length / 1000; // mm to m
+        return (3 * Math.sqrt(3) / 2) * s * s * hexLength;
+
+      case 'tube':
+        // Volume = π × (R² - r²) × length
+        if (!d.outer_diameter || !d.wall_thickness || !d.length) return 0;
+        const outerRadius = d.outer_diameter / 2000; // mm to m
+        const innerRadius = (d.outer_diameter - 2 * d.wall_thickness) / 2000; // mm to m
+        const tubeLength = d.length / 1000; // mm to m
+        return PI * (outerRadius * outerRadius - innerRadius * innerRadius) * tubeLength;
+
+      default:
+        return 0;
+    }
+  },
+
+  // Calculate weight in kg
+  calculateWeight: (stockForm, dimensions, density) => {
+    if (!density) return 0;
+    const volume = StockCalculations.calculateVolume(stockForm, dimensions);
+    return volume * density; // kg/m³ × m³ = kg
+  },
+
+  // Get dimension field labels for each stock form
+  getDimensionFields: (stockForm) => {
+    const fields = {
+      round_bar: [
+        { name: 'diameter', label: 'Diameter (mm)', type: 'number' },
+        { name: 'length', label: 'Length (mm)', type: 'number' }
+      ],
+      flat_bar: [
+        { name: 'width', label: 'Width (mm)', type: 'number' },
+        { name: 'thickness', label: 'Thickness (mm)', type: 'number' },
+        { name: 'length', label: 'Length (mm)', type: 'number' }
+      ],
+      plate: [
+        { name: 'width', label: 'Width (mm)', type: 'number' },
+        { name: 'length', label: 'Length (mm)', type: 'number' },
+        { name: 'thickness', label: 'Thickness (mm)', type: 'number' }
+      ],
+      hex_bar: [
+        { name: 'across_flats', label: 'Across Flats (mm)', type: 'number' },
+        { name: 'length', label: 'Length (mm)', type: 'number' }
+      ],
+      tube: [
+        { name: 'outer_diameter', label: 'Outer Diameter (mm)', type: 'number' },
+        { name: 'wall_thickness', label: 'Wall Thickness (mm)', type: 'number' },
+        { name: 'length', label: 'Length (mm)', type: 'number' }
+      ]
+    };
+    return fields[stockForm] || [];
+  }
+};
+
+// ============================================
 // LOGIN COMPONENT
 // ============================================
 function LoginPage({ onLogin }) {
@@ -1002,11 +1089,14 @@ function PartsView({ parts, suppliers, materials, onSelectPart, onAddPart }) {
       </div>
       <div className="table-container">
         <table className="table">
-          <thead><tr><th>Part Number</th><th>Description</th><th>Type</th><th>UOM</th><th>Supplier/Material</th><th>Weight</th><th></th></tr></thead>
+          <thead><tr><th>Part Number</th><th>Description</th><th>Type</th><th>UOM</th><th>Supplier/Material</th><th>Stock Weight</th><th>Finished Weight</th><th></th></tr></thead>
           <tbody>
             {filteredParts.map(part => {
               const supplier = getSupplier(part.supplier_id);
               const material = getMaterial(part.stock_material_id);
+              const stockWeight = part.type === 'manufactured' && part.stock_dimensions && material
+                ? StockCalculations.calculateWeight(part.stock_form, part.stock_dimensions, material.density)
+                : 0;
               return (
                 <tr key={part.id} onClick={() => onSelectPart(part)} style={{ cursor: 'pointer' }}>
                   <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{part.part_number}</strong></td>
@@ -1026,6 +1116,13 @@ function PartsView({ parts, suppliers, materials, onSelectPart, onAddPart }) {
                     {part.type === 'purchased' && supplier ? supplier.name : ''}
                     {part.type === 'manufactured' && material ? material.name : ''}
                     {part.type === 'assembly' ? '-' : ''}
+                  </td>
+                  <td>
+                    {stockWeight > 0 ? (
+                      <span style={{ color: 'var(--accent-orange)', fontFamily: 'monospace' }}>
+                        {stockWeight.toFixed(3)} kg
+                      </span>
+                    ) : '-'}
                   </td>
                   <td>{part.finished_weight ? `${parseFloat(part.finished_weight).toFixed(3)} kg` : '-'}</td>
                   <td><button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); onSelectPart(part); }}>View →</button></td>
@@ -1185,9 +1282,44 @@ function AddPartModal({ suppliers, materials, onClose, onSave }) {
               </div>
               <div className="form-group">
                 <label className="form-label">Stock Form</label>
-                <select className="form-select" value={formData.stock_form} onChange={e => setFormData({ ...formData, stock_form: e.target.value })}>
+                <select className="form-select" value={formData.stock_form} onChange={e => setFormData({ ...formData, stock_form: e.target.value, stock_dimensions: {} })}>
                   {stockForms.map(f => (<option key={f.value} value={f.value}>{f.label}</option>))}
                 </select>
+              </div>
+
+              {/* Stock Dimensions */}
+              <div style={{ background: 'var(--bg-tertiary)', padding: 16, borderRadius: 8, marginTop: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 12 }}>Stock Dimensions (all in mm)</div>
+                <div className="form-row">
+                  {StockCalculations.getDimensionFields(formData.stock_form).map(field => (
+                    <div key={field.name} className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: 12 }}>{field.label}</label>
+                      <input
+                        type={field.type}
+                        className="form-input"
+                        placeholder="0"
+                        step="0.01"
+                        value={formData.stock_dimensions[field.name] || ''}
+                        onChange={e => setFormData({
+                          ...formData,
+                          stock_dimensions: { ...formData.stock_dimensions, [field.name]: parseFloat(e.target.value) || 0 }
+                        })}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {formData.stock_material_id && Object.keys(formData.stock_dimensions).length > 0 && (
+                  <div style={{ marginTop: 12, padding: 12, background: 'var(--bg-secondary)', borderRadius: 6, borderLeft: '3px solid var(--accent-orange)' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Calculated Stock Weight</div>
+                    <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--accent-orange)' }}>
+                      {StockCalculations.calculateWeight(
+                        formData.stock_form,
+                        formData.stock_dimensions,
+                        materials.find(m => m.id === formData.stock_material_id)?.density || 0
+                      ).toFixed(3)} kg
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1333,6 +1465,35 @@ function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdate
             </>
           )}
         </div>
+
+        {/* Stock Dimensions and Weight for Manufactured Parts */}
+        {part.type === 'manufactured' && part.stock_dimensions && Object.keys(part.stock_dimensions).length > 0 && (
+          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icons.Package /> Stock Information
+            </div>
+            <div className="info-grid">
+              {StockCalculations.getDimensionFields(part.stock_form).map(field => (
+                part.stock_dimensions[field.name] && (
+                  <div key={field.name} className="info-card">
+                    <div className="info-label">{field.label}</div>
+                    <div className="info-value">{part.stock_dimensions[field.name]} mm</div>
+                  </div>
+                )
+              ))}
+              <div className="info-card" style={{ background: 'rgba(255,107,53,0.1)', borderLeft: '3px solid var(--accent-orange)' }}>
+                <div className="info-label">Stock Weight</div>
+                <div className="info-value" style={{ color: 'var(--accent-orange)', fontSize: 20 }}>
+                  {StockCalculations.calculateWeight(
+                    part.stock_form,
+                    part.stock_dimensions,
+                    material?.density || 0
+                  ).toFixed(3)} kg
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div style={{ marginTop: 24 }}>
           <button className={`btn ${part.status === 'active' ? 'btn-secondary' : 'btn-primary'}`} onClick={handleStatusToggle}>
