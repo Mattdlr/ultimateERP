@@ -412,6 +412,7 @@ function MainApp({ user, onLogout }) {
   const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [machines, setMachines] = useState([]);
+  const [bomRelations, setBomRelations] = useState([]);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
@@ -431,6 +432,7 @@ function MainApp({ user, onLogout }) {
       const { data: materialsData } = await supabase.from('materials').select('*').order('name');
       const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
       const { data: machinesData } = await supabase.from('machines').select('*').order('name');
+      const { data: bomData } = await supabase.from('bom_relations').select('*');
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -438,6 +440,7 @@ function MainApp({ user, onLogout }) {
       setMaterials(materialsData || []);
       setParts(partsData || []);
       setMachines(machinesData || []);
+      setBomRelations(bomData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -726,6 +729,50 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // BOM HANDLERS
+  // ============================================
+  const handleAddBomItem = async (parentId, childId, quantity, position) => {
+    try {
+      const { data, error } = await supabase.from('bom_relations').insert({
+        parent_id: parentId,
+        child_id: childId,
+        quantity: quantity || 1,
+        position: position || null
+      }).select().single();
+      if (error) throw error;
+      setBomRelations([...bomRelations, data]);
+      showToast('BOM item added');
+    } catch (err) {
+      console.error('Error adding BOM item:', err);
+      showToast('Error adding BOM item', 'error');
+    }
+  };
+
+  const handleRemoveBomItem = async (bomId) => {
+    try {
+      const { error } = await supabase.from('bom_relations').delete().eq('id', bomId);
+      if (error) throw error;
+      setBomRelations(bomRelations.filter(b => b.id !== bomId));
+      showToast('BOM item removed');
+    } catch (err) {
+      console.error('Error removing BOM item:', err);
+      showToast('Error removing BOM item', 'error');
+    }
+  };
+
+  const handleUpdateBomItem = async (bomId, updates) => {
+    try {
+      const { error } = await supabase.from('bom_relations').update(updates).eq('id', bomId);
+      if (error) throw error;
+      setBomRelations(bomRelations.map(b => b.id === bomId ? { ...b, ...updates } : b));
+      showToast('BOM item updated');
+    } catch (err) {
+      console.error('Error updating BOM item:', err);
+      showToast('Error updating BOM item', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -786,7 +833,7 @@ function MainApp({ user, onLogout }) {
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} suppliers={suppliers} materials={materials} machines={machines} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} />)}
           </main>
         </div>
         {showAddProjectModal && (<AddProjectModal customers={customers} nextProjectNumber={getNextProjectNumber()} onClose={() => setShowAddProjectModal(false)} onSave={handleAddProject} />)}
@@ -1447,12 +1494,44 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
 // ============================================
 // PART DETAIL VIEW
 // ============================================
-function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdatePart, onDeletePart, onIncrementRevision }) {
+function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
+  const [showAddBomItem, setShowAddBomItem] = useState(false);
+  const [newBomItem, setNewBomItem] = useState({ child_id: '', quantity: 1, position: '' });
 
   const supplier = suppliers.find(s => s.id === part.supplier_id);
   const material = materials.find(m => m.id === part.stock_material_id);
+
+  // Get BOM items for this assembly
+  const bomItems = bomRelations.filter(b => b.parent_id === part.id);
+
+  // Get child part details
+  const getChildPart = (childId) => parts.find(p => p.id === childId);
+
+  // Calculate total weight for assembly
+  const calculateAssemblyWeight = () => {
+    let totalWeight = 0;
+    bomItems.forEach(bomItem => {
+      const childPart = getChildPart(bomItem.child_id);
+      if (childPart) {
+        // Use finished_weight if available, otherwise use stock weight for manufactured parts
+        let childWeight = parseFloat(childPart.finished_weight) || 0;
+        if (!childWeight && childPart.type === 'manufactured' && childPart.stock_dimensions && material) {
+          const childMaterial = materials.find(m => m.id === childPart.stock_material_id);
+          if (childMaterial) {
+            childWeight = StockCalculations.calculateWeight(
+              childPart.stock_form,
+              childPart.stock_dimensions,
+              childMaterial.density
+            );
+          }
+        }
+        totalWeight += childWeight * bomItem.quantity;
+      }
+    });
+    return totalWeight;
+  };
 
   const startEdit = () => {
     setEditData({
@@ -1624,6 +1703,118 @@ function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdate
               <div className="notes-title"><Icons.FileText /> Revision Notes</div>
             </div>
             <div style={{ padding: 16, color: 'var(--text-primary)' }}>{part.revision_notes}</div>
+          </div>
+        )}
+
+        {/* BOM Section for Assembly Parts */}
+        {part.type === 'assembly' && (
+          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Layers /> Bill of Materials
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAddBomItem(!showAddBomItem)}>
+                <Icons.Plus /> Add Component
+              </button>
+            </div>
+
+            {/* Add BOM Item Form */}
+            {showAddBomItem && (
+              <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                <div className="form-row">
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Child Part *</label>
+                    <select className="form-select" value={newBomItem.child_id} onChange={e => setNewBomItem({ ...newBomItem, child_id: e.target.value })}>
+                      <option value="">Select part...</option>
+                      {parts.filter(p => p.id !== part.id).map(p => (
+                        <option key={p.id} value={p.id}>{p.part_number} - {p.description}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Quantity *</label>
+                    <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: parseInt(e.target.value) || 1 })} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Position</label>
+                    <input type="text" className="form-input" placeholder="Optional" value={newBomItem.position} onChange={e => setNewBomItem({ ...newBomItem, position: e.target.value })} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-primary" onClick={() => {
+                    if (!newBomItem.child_id) { alert('Please select a child part'); return; }
+                    onAddBomItem(part.id, newBomItem.child_id, newBomItem.quantity, newBomItem.position);
+                    setNewBomItem({ child_id: '', quantity: 1, position: '' });
+                    setShowAddBomItem(false);
+                  }}><Icons.Check /> Add</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowAddBomItem(false); setNewBomItem({ child_id: '', quantity: 1, position: '' }); }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* BOM Items Table */}
+            {bomItems.length > 0 ? (
+              <>
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Weight</th><th>Total Weight</th><th>Position</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {bomItems.map(bomItem => {
+                        const childPart = getChildPart(bomItem.child_id);
+                        if (!childPart) return null;
+                        let unitWeight = parseFloat(childPart.finished_weight) || 0;
+                        if (!unitWeight && childPart.type === 'manufactured' && childPart.stock_dimensions) {
+                          const childMaterial = materials.find(m => m.id === childPart.stock_material_id);
+                          if (childMaterial) {
+                            unitWeight = StockCalculations.calculateWeight(
+                              childPart.stock_form,
+                              childPart.stock_dimensions,
+                              childMaterial.density
+                            );
+                          }
+                        }
+                        const totalWeight = unitWeight * bomItem.quantity;
+                        return (
+                          <tr key={bomItem.id}>
+                            <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{childPart.part_number}</strong></td>
+                            <td>{childPart.description}</td>
+                            <td><span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{childPart.type}</span></td>
+                            <td>{bomItem.quantity}</td>
+                            <td>{unitWeight > 0 ? `${unitWeight.toFixed(3)} kg` : '-'}</td>
+                            <td style={{ fontWeight: 600 }}>{totalWeight > 0 ? `${totalWeight.toFixed(3)} kg` : '-'}</td>
+                            <td>{bomItem.position || '-'}</td>
+                            <td>
+                              <button className="btn btn-ghost" onClick={() => { if (confirm('Remove this component from BOM?')) onRemoveBomItem(bomItem.id); }} style={{ color: '#ef4444' }}>
+                                <Icons.Trash />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: 16, padding: 16, background: 'rgba(52,211,153,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Assembly Weight</div>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--accent-green)' }}>
+                        {calculateAssemblyWeight().toFixed(3)} kg
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {bomItems.length} component{bomItems.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                No components in BOM yet. Click "Add Component" to start building the assembly.
+              </div>
+            )}
           </div>
         )}
       </div>
