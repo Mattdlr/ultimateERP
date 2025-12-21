@@ -587,7 +587,31 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddPart = async (partData) => {
     try {
-      const { data, error } = await supabase.from('parts').insert(partData).select().single();
+      // Build clean data object based on part type
+      const cleanData = {
+        part_number: partData.part_number,
+        description: partData.description,
+        type: partData.type,
+        status: 'active',
+        uom: partData.uom || 'EA',
+        finished_weight: partData.finished_weight || null,
+        revision_notes: partData.revision_notes || null
+      };
+
+      // Add type-specific fields
+      if (partData.type === 'purchased') {
+        cleanData.supplier_id = partData.supplier_id || null;
+        cleanData.supplier_code = partData.supplier_code || null;
+      } else if (partData.type === 'manufactured') {
+        cleanData.stock_material_id = partData.stock_material_id || null;
+        cleanData.stock_form = partData.stock_form || null;
+        // Only include stock_dimensions if it has values
+        if (partData.stock_dimensions && Object.keys(partData.stock_dimensions).length > 0) {
+          cleanData.stock_dimensions = partData.stock_dimensions;
+        }
+      }
+
+      const { data, error } = await supabase.from('parts').insert(cleanData).select().single();
       if (error) throw error;
       setParts([data, ...parts]);
       setShowAddPartModal(false);
