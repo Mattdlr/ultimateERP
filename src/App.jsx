@@ -199,6 +199,9 @@ const Icons = {
   Trash: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>,
   Menu: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   LogOut: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  Package: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+  Truck: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
+  Layers: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
 };
 
 // ============================================
@@ -263,6 +266,14 @@ function MainApp({ user, onLogout }) {
   const [toast, setToast] = useState(null);
   const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 
+  // Parts management state
+  const [parts, setParts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [materials, setMaterials] = useState([]);
+  const [machines, setMachines] = useState([]);
+  const [selectedPart, setSelectedPart] = useState(null);
+  const [showAddPartModal, setShowAddPartModal] = useState(false);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -275,8 +286,17 @@ function MainApp({ user, onLogout }) {
     try {
       const { data: customersData } = await supabase.from('customers').select('*').order('name');
       const { data: projectsData } = await supabase.from('projects').select('*, project_notes (*)').order('project_number', { ascending: false });
+      const { data: suppliersData } = await supabase.from('suppliers').select('*').order('name');
+      const { data: materialsData } = await supabase.from('materials').select('*').order('name');
+      const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
+      const { data: machinesData } = await supabase.from('machines').select('*').order('name');
+
       setCustomers(customersData || []);
       setProjects(projectsData || []);
+      setSuppliers(suppliersData || []);
+      setMaterials(materialsData || []);
+      setParts(partsData || []);
+      setMachines(machinesData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -393,6 +413,130 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // SUPPLIERS HANDLERS
+  // ============================================
+  const handleAddSupplier = async (supplierData) => {
+    try {
+      const { data, error } = await supabase.from('suppliers').insert(supplierData).select().single();
+      if (error) throw error;
+      setSuppliers([...suppliers, data].sort((a, b) => a.name.localeCompare(b.name)));
+      showToast('Supplier added');
+    } catch (err) {
+      console.error('Error adding supplier:', err);
+      showToast('Error adding supplier', 'error');
+    }
+  };
+
+  const handleUpdateSupplier = async (supplierId, updates) => {
+    try {
+      const { error } = await supabase.from('suppliers').update(updates).eq('id', supplierId);
+      if (error) throw error;
+      setSuppliers(suppliers.map(s => s.id === supplierId ? { ...s, ...updates } : s));
+      showToast('Supplier updated');
+    } catch (err) {
+      console.error('Error updating supplier:', err);
+      showToast('Error updating supplier', 'error');
+    }
+  };
+
+  const handleDeleteSupplier = async (supplierId) => {
+    const inUse = parts.some(p => p.supplier_id === supplierId);
+    if (inUse) { showToast('Cannot delete: supplier has parts', 'error'); return; }
+    try {
+      const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
+      if (error) throw error;
+      setSuppliers(suppliers.filter(s => s.id !== supplierId));
+      showToast('Supplier deleted');
+    } catch (err) {
+      console.error('Error deleting supplier:', err);
+      showToast('Error deleting supplier', 'error');
+    }
+  };
+
+  // ============================================
+  // MATERIALS HANDLERS
+  // ============================================
+  const handleAddMaterial = async (materialData) => {
+    try {
+      const { data, error } = await supabase.from('materials').insert(materialData).select().single();
+      if (error) throw error;
+      setMaterials([...materials, data].sort((a, b) => a.name.localeCompare(b.name)));
+      showToast('Material added');
+    } catch (err) {
+      console.error('Error adding material:', err);
+      showToast('Error adding material', 'error');
+    }
+  };
+
+  const handleUpdateMaterial = async (materialId, updates) => {
+    try {
+      const { error } = await supabase.from('materials').update(updates).eq('id', materialId);
+      if (error) throw error;
+      setMaterials(materials.map(m => m.id === materialId ? { ...m, ...updates } : m));
+      showToast('Material updated');
+    } catch (err) {
+      console.error('Error updating material:', err);
+      showToast('Error updating material', 'error');
+    }
+  };
+
+  const handleDeleteMaterial = async (materialId) => {
+    const inUse = parts.some(p => p.stock_material_id === materialId);
+    if (inUse) { showToast('Cannot delete: material is in use', 'error'); return; }
+    try {
+      const { error } = await supabase.from('materials').delete().eq('id', materialId);
+      if (error) throw error;
+      setMaterials(materials.filter(m => m.id !== materialId));
+      showToast('Material deleted');
+    } catch (err) {
+      console.error('Error deleting material:', err);
+      showToast('Error deleting material', 'error');
+    }
+  };
+
+  // ============================================
+  // PARTS HANDLERS
+  // ============================================
+  const handleAddPart = async (partData) => {
+    try {
+      const { data, error } = await supabase.from('parts').insert(partData).select().single();
+      if (error) throw error;
+      setParts([data, ...parts]);
+      setShowAddPartModal(false);
+      showToast(`Part ${data.part_number} created`);
+    } catch (err) {
+      console.error('Error adding part:', err);
+      showToast('Error creating part', 'error');
+    }
+  };
+
+  const handleUpdatePart = async (partId, updates) => {
+    try {
+      const { error } = await supabase.from('parts').update(updates).eq('id', partId);
+      if (error) throw error;
+      setParts(parts.map(p => p.id === partId ? { ...p, ...updates } : p));
+      if (selectedPart?.id === partId) setSelectedPart({ ...selectedPart, ...updates });
+      showToast('Part updated');
+    } catch (err) {
+      console.error('Error updating part:', err);
+      showToast('Error updating part', 'error');
+    }
+  };
+
+  const handleDeletePart = async (partId) => {
+    try {
+      const { error } = await supabase.from('parts').delete().eq('id', partId);
+      if (error) throw error;
+      setParts(parts.filter(p => p.id !== partId));
+      setSelectedPart(null);
+      showToast('Part deleted');
+    } catch (err) {
+      console.error('Error deleting part:', err);
+      showToast('Error deleting part', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -436,17 +580,28 @@ function MainApp({ user, onLogout }) {
             <button className="sidebar-close-btn" onClick={() => setMobileMenuOpen(false)}><Icons.X /></button>
             <div className="nav-section">
               <div className="nav-section-title">Projects</div>
-              <div className={`nav-item ${activeView === 'projects' ? 'active' : ''}`} onClick={() => { setActiveView('projects'); setSelectedProject(null); setMobileMenuOpen(false); }}><Icons.Briefcase /><span>All Projects</span></div>
-              <div className={`nav-item ${activeView === 'customers' ? 'active' : ''}`} onClick={() => { setActiveView('customers'); setSelectedProject(null); setMobileMenuOpen(false); }}><Icons.Users /><span>Customers</span></div>
+              <div className={`nav-item ${activeView === 'projects' ? 'active' : ''}`} onClick={() => { setActiveView('projects'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Briefcase /><span>All Projects</span></div>
+              <div className={`nav-item ${activeView === 'customers' ? 'active' : ''}`} onClick={() => { setActiveView('customers'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Users /><span>Customers</span></div>
+            </div>
+            <div className="nav-section">
+              <div className="nav-section-title">Parts Management</div>
+              <div className={`nav-item ${activeView === 'parts' ? 'active' : ''}`} onClick={() => { setActiveView('parts'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Package /><span>Parts</span></div>
+              <div className={`nav-item ${activeView === 'suppliers' ? 'active' : ''}`} onClick={() => { setActiveView('suppliers'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Truck /><span>Suppliers</span></div>
+              <div className={`nav-item ${activeView === 'materials' ? 'active' : ''}`} onClick={() => { setActiveView('materials'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Layers /><span>Materials</span></div>
             </div>
           </nav>
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
             {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} />)}
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
+            {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
+            {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
+            {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} suppliers={suppliers} materials={materials} machines={machines} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} />)}
           </main>
         </div>
         {showAddProjectModal && (<AddProjectModal customers={customers} nextProjectNumber={getNextProjectNumber()} onClose={() => setShowAddProjectModal(false)} onSave={handleAddProject} />)}
+        {showAddPartModal && (<AddPartModal suppliers={suppliers} materials={materials} onClose={() => setShowAddPartModal(false)} onSave={handleAddPart} />)}
         {toast && (<div className={`toast ${toast.type}`}>{toast.type === 'success' ? <Icons.Check /> : <Icons.X />}<span>{toast.message}</span></div>)}
       </div>
     </>
@@ -684,6 +839,208 @@ function CustomersView({ customers, projects, onAddCustomer, onUpdateCustomer, o
 }
 
 // ============================================
+// SUPPLIERS VIEW
+// ============================================
+function SuppliersView({ suppliers, parts, onAddSupplier, onUpdateSupplier, onDeleteSupplier }) {
+  const [newSupplier, setNewSupplier] = useState({ name: '', contact: '', email: '', phone: '', lead_time: 0 });
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const handleAdd = () => {
+    if (!newSupplier.name) return;
+    onAddSupplier(newSupplier);
+    setNewSupplier({ name: '', contact: '', email: '', phone: '', lead_time: 0 });
+  };
+  const startEdit = (supplier) => { setEditingId(supplier.id); setEditData({ ...supplier }); };
+  const saveEdit = () => { onUpdateSupplier(editingId, editData); setEditingId(null); };
+
+  const getPartCount = (supplierId) => parts.filter(p => p.supplier_id === supplierId).length;
+
+  return (
+    <>
+      <div className="page-header"><div><h1 className="page-title">Suppliers</h1><p className="page-subtitle">Manage supplier information</p></div></div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, alignItems: 'end' }}>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Supplier Name *</label><input type="text" className="form-input" placeholder="Supplier name" value={newSupplier.name} onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Contact Person</label><input type="text" className="form-input" placeholder="Name" value={newSupplier.contact} onChange={e => setNewSupplier({ ...newSupplier, contact: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Email</label><input type="email" className="form-input" placeholder="email@supplier.com" value={newSupplier.email} onChange={e => setNewSupplier({ ...newSupplier, email: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Phone</label><input type="text" className="form-input" placeholder="Phone number" value={newSupplier.phone} onChange={e => setNewSupplier({ ...newSupplier, phone: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Lead Time (days)</label><input type="number" className="form-input" placeholder="0" value={newSupplier.lead_time} onChange={e => setNewSupplier({ ...newSupplier, lead_time: e.target.value })} /></div>
+          <button className="btn btn-primary" onClick={handleAdd}><Icons.Plus /> Add Supplier</button>
+        </div>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead><tr><th>Supplier</th><th>Contact</th><th>Email</th><th>Phone</th><th>Lead Time</th><th>Parts</th><th></th></tr></thead>
+          <tbody>
+            {suppliers.map(supplier => {
+              const partCount = getPartCount(supplier.id);
+              const isEditing = editingId === supplier.id;
+              if (isEditing) {
+                return (<tr key={supplier.id}><td><input type="text" className="form-input" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><input type="text" className="form-input" value={editData.contact || ''} onChange={e => setEditData({ ...editData, contact: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><input type="email" className="form-input" value={editData.email || ''} onChange={e => setEditData({ ...editData, email: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><input type="text" className="form-input" value={editData.phone || ''} onChange={e => setEditData({ ...editData, phone: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><input type="number" className="form-input" value={editData.lead_time || 0} onChange={e => setEditData({ ...editData, lead_time: e.target.value })} style={{ padding: '6px 10px' }} /></td><td>{partCount}</td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={saveEdit} style={{ color: 'var(--accent-green)' }}><Icons.Check /></button><button className="btn btn-ghost" onClick={() => setEditingId(null)}><Icons.X /></button></div></td></tr>);
+              }
+              return (<tr key={supplier.id}><td><strong>{supplier.name}</strong></td><td>{supplier.contact}</td><td>{supplier.email && (<a href={`mailto:${supplier.email}`} style={{ color: 'var(--accent-blue)' }}>{supplier.email}</a>)}</td><td>{supplier.phone}</td><td>{supplier.lead_time || 0} days</td><td>{partCount}</td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={() => startEdit(supplier)}><Icons.Pencil /></button><button className="btn btn-ghost" onClick={() => onDeleteSupplier(supplier.id)} disabled={partCount > 0} style={{ opacity: partCount > 0 ? 0.3 : 1 }}><Icons.Trash /></button></div></td></tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ============================================
+// MATERIALS VIEW
+// ============================================
+function MaterialsView({ materials, parts, onAddMaterial, onUpdateMaterial, onDeleteMaterial }) {
+  const [newMaterial, setNewMaterial] = useState({ name: '', density: '' });
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const handleAdd = () => {
+    if (!newMaterial.name || !newMaterial.density) return;
+    onAddMaterial(newMaterial);
+    setNewMaterial({ name: '', density: '' });
+  };
+  const startEdit = (material) => { setEditingId(material.id); setEditData({ ...material }); };
+  const saveEdit = () => { onUpdateMaterial(editingId, editData); setEditingId(null); };
+
+  const getPartCount = (materialId) => parts.filter(p => p.stock_material_id === materialId).length;
+
+  return (
+    <>
+      <div className="page-header"><div><h1 className="page-title">Materials</h1><p className="page-subtitle">Manage material types and properties</p></div></div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 16, alignItems: 'end' }}>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Material Name *</label><input type="text" className="form-input" placeholder="e.g., Aluminium 6082-T6" value={newMaterial.name} onChange={e => setNewMaterial({ ...newMaterial, name: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Density (kg/m³) *</label><input type="number" className="form-input" placeholder="e.g., 2700" value={newMaterial.density} onChange={e => setNewMaterial({ ...newMaterial, density: e.target.value })} /></div>
+          <button className="btn btn-primary" onClick={handleAdd}><Icons.Plus /> Add Material</button>
+        </div>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead><tr><th>Material Name</th><th>Density (kg/m³)</th><th>Parts Using</th><th></th></tr></thead>
+          <tbody>
+            {materials.map(material => {
+              const partCount = getPartCount(material.id);
+              const isEditing = editingId === material.id;
+              if (isEditing) {
+                return (<tr key={material.id}><td><input type="text" className="form-input" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><input type="number" className="form-input" value={editData.density} onChange={e => setEditData({ ...editData, density: e.target.value })} style={{ padding: '6px 10px' }} /></td><td>{partCount}</td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={saveEdit} style={{ color: 'var(--accent-green)' }}><Icons.Check /></button><button className="btn btn-ghost" onClick={() => setEditingId(null)}><Icons.X /></button></div></td></tr>);
+              }
+              return (<tr key={material.id}><td><strong>{material.name}</strong></td><td>{parseFloat(material.density).toLocaleString()}</td><td>{partCount}</td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={() => startEdit(material)}><Icons.Pencil /></button><button className="btn btn-ghost" onClick={() => onDeleteMaterial(material.id)} disabled={partCount > 0} style={{ opacity: partCount > 0 ? 0.3 : 1 }}><Icons.Trash /></button></div></td></tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ============================================
+// PARTS VIEW
+// ============================================
+function PartsView({ parts, suppliers, materials, onSelectPart, onAddPart }) {
+  const [typeFilter, setTypeFilter] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredParts = parts.filter(part => {
+    const matchesType = !typeFilter || part.type === typeFilter;
+    const matchesStatus = !statusFilter || part.status === statusFilter;
+    const matchesSearch = !searchQuery ||
+      part.part_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      part.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesType && matchesStatus && matchesSearch;
+  });
+
+  const stats = {
+    total: parts.length,
+    manufactured: parts.filter(p => p.type === 'manufactured' && p.status === 'active').length,
+    purchased: parts.filter(p => p.type === 'purchased' && p.status === 'active').length,
+    assembly: parts.filter(p => p.type === 'assembly' && p.status === 'active').length,
+    active: parts.filter(p => p.status === 'active').length,
+  };
+
+  const getSupplier = (supplierId) => suppliers.find(s => s.id === supplierId);
+  const getMaterial = (materialId) => materials.find(m => m.id === materialId);
+
+  const getPartTypeLabel = (type) => {
+    const labels = { manufactured: 'Manufactured', purchased: 'Purchased', assembly: 'Assembly' };
+    return labels[type] || type;
+  };
+
+  const getPartTypeBadgeColor = (type) => {
+    const colors = {
+      manufactured: 'var(--accent-blue)',
+      purchased: 'var(--accent-orange)',
+      assembly: 'var(--accent-green)'
+    };
+    return colors[type] || 'var(--text-muted)';
+  };
+
+  return (
+    <>
+      <div className="page-header">
+        <div><h1 className="page-title">Parts</h1><p className="page-subtitle">Manage manufactured, purchased, and assembly parts</p></div>
+        <button className="btn btn-primary" onClick={onAddPart}><Icons.Plus /> New Part</button>
+      </div>
+      <div className="stats-row">
+        <div className="stat-card"><div className="stat-card-value">{stats.manufactured}</div><div className="stat-card-label">Manufactured</div></div>
+        <div className="stat-card"><div className="stat-card-value">{stats.purchased}</div><div className="stat-card-label">Purchased</div></div>
+        <div className="stat-card"><div className="stat-card-value">{stats.assembly}</div><div className="stat-card-label">Assemblies</div></div>
+        <div className="stat-card"><div className="stat-card-value">{stats.active}</div><div className="stat-card-label">Active Parts</div></div>
+      </div>
+      <div className="search-box"><Icons.Search /><input type="text" placeholder="Search parts..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
+      <div className="filter-row">
+        <button className={`filter-btn ${!typeFilter ? 'active' : ''}`} onClick={() => setTypeFilter(null)}>All Types<span className="count">{stats.active}</span></button>
+        <button className={`filter-btn ${typeFilter === 'manufactured' ? 'active' : ''}`} onClick={() => setTypeFilter('manufactured')}>Manufactured<span className="count">{stats.manufactured}</span></button>
+        <button className={`filter-btn ${typeFilter === 'purchased' ? 'active' : ''}`} onClick={() => setTypeFilter('purchased')}>Purchased<span className="count">{stats.purchased}</span></button>
+        <button className={`filter-btn ${typeFilter === 'assembly' ? 'active' : ''}`} onClick={() => setTypeFilter('assembly')}>Assembly<span className="count">{stats.assembly}</span></button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button className={`filter-btn ${statusFilter === 'active' ? 'active' : ''}`} onClick={() => setStatusFilter('active')}>Active</button>
+          <button className={`filter-btn ${statusFilter === 'obsolete' ? 'active' : ''}`} onClick={() => setStatusFilter('obsolete')}>Obsolete</button>
+        </div>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead><tr><th>Part Number</th><th>Description</th><th>Type</th><th>UOM</th><th>Supplier/Material</th><th>Weight</th><th></th></tr></thead>
+          <tbody>
+            {filteredParts.map(part => {
+              const supplier = getSupplier(part.supplier_id);
+              const material = getMaterial(part.stock_material_id);
+              return (
+                <tr key={part.id} onClick={() => onSelectPart(part)} style={{ cursor: 'pointer' }}>
+                  <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{part.part_number}</strong></td>
+                  <td>{part.description}</td>
+                  <td><span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    padding: '4px 10px',
+                    borderRadius: '12px',
+                    background: `${getPartTypeBadgeColor(part.type)}22`,
+                    color: getPartTypeBadgeColor(part.type)
+                  }}>{getPartTypeLabel(part.type)}</span></td>
+                  <td>{part.uom || 'EA'}</td>
+                  <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                    {part.type === 'purchased' && supplier ? supplier.name : ''}
+                    {part.type === 'manufactured' && material ? material.name : ''}
+                    {part.type === 'assembly' ? '-' : ''}
+                  </td>
+                  <td>{part.finished_weight ? `${parseFloat(part.finished_weight).toFixed(3)} kg` : '-'}</td>
+                  <td><button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); onSelectPart(part); }}>View →</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {filteredParts.length === 0 && (<div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>No parts found</div>)}
+    </>
+  );
+}
+
+// ============================================
 // ADD PROJECT MODAL
 // ============================================
 function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
@@ -723,6 +1080,285 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
         <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={handleSubmit}><Icons.Check /> Create Project</button></div>
       </div>
     </div>
+  );
+}
+
+// ============================================
+// ADD PART MODAL
+// ============================================
+function AddPartModal({ suppliers, materials, onClose, onSave }) {
+  const [formData, setFormData] = useState({
+    part_number: '',
+    description: '',
+    type: 'manufactured',
+    uom: 'EA',
+    finished_weight: '',
+    // Purchased part fields
+    supplier_id: '',
+    supplier_code: '',
+    // Manufactured part fields
+    stock_material_id: '',
+    stock_form: 'round_bar',
+    stock_dimensions: {}
+  });
+
+  const handleSubmit = () => {
+    if (!formData.part_number || !formData.description) {
+      alert('Please fill in part number and description');
+      return;
+    }
+    if (formData.type === 'purchased' && !formData.supplier_id) {
+      alert('Please select a supplier for purchased parts');
+      return;
+    }
+    onSave(formData);
+  };
+
+  const stockForms = [
+    { value: 'round_bar', label: 'Round Bar' },
+    { value: 'flat_bar', label: 'Flat Bar' },
+    { value: 'plate', label: 'Plate' },
+    { value: 'hex_bar', label: 'Hex Bar' },
+    { value: 'tube', label: 'Tube' }
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+        <div className="modal-header">
+          <h2 className="modal-title"><Icons.Package /> New Part</h2>
+          <button className="modal-close" onClick={onClose}><Icons.X /></button>
+        </div>
+        <div className="modal-body">
+          {/* Basic Part Info */}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Part Number *</label>
+              <input type="text" className="form-input" placeholder="e.g., P-0001" value={formData.part_number} onChange={e => setFormData({ ...formData, part_number: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">UOM</label>
+              <input type="text" className="form-input" placeholder="EA" value={formData.uom} onChange={e => setFormData({ ...formData, uom: e.target.value })} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Description *</label>
+            <input type="text" className="form-input" placeholder="Part description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+          </div>
+
+          {/* Part Type Selection */}
+          <div className="form-group">
+            <label className="form-label">Part Type *</label>
+            <select className="form-select" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value, supplier_id: '', stock_material_id: '' })}>
+              <option value="manufactured">Manufactured</option>
+              <option value="purchased">Purchased</option>
+              <option value="assembly">Assembly</option>
+            </select>
+          </div>
+
+          {/* Purchased Part Fields */}
+          {formData.type === 'purchased' && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Supplier *</label>
+                <select className="form-select" value={formData.supplier_id} onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}>
+                  <option value="">Select supplier...</option>
+                  {suppliers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Supplier Part Code</label>
+                <input type="text" className="form-input" placeholder="Supplier's part number" value={formData.supplier_code} onChange={e => setFormData({ ...formData, supplier_code: e.target.value })} />
+              </div>
+            </>
+          )}
+
+          {/* Manufactured Part Fields */}
+          {formData.type === 'manufactured' && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Stock Material</label>
+                <select className="form-select" value={formData.stock_material_id} onChange={e => setFormData({ ...formData, stock_material_id: e.target.value })}>
+                  <option value="">Select material...</option>
+                  {materials.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Stock Form</label>
+                <select className="form-select" value={formData.stock_form} onChange={e => setFormData({ ...formData, stock_form: e.target.value })}>
+                  {stockForms.map(f => (<option key={f.value} value={f.value}>{f.label}</option>))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* Common Fields */}
+          <div className="form-group">
+            <label className="form-label">Finished Weight (kg)</label>
+            <input type="number" className="form-input" placeholder="0.000" step="0.001" value={formData.finished_weight} onChange={e => setFormData({ ...formData, finished_weight: e.target.value })} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit}><Icons.Check /> Create Part</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// PART DETAIL VIEW
+// ============================================
+function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdatePart, onDeletePart }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+
+  const supplier = suppliers.find(s => s.id === part.supplier_id);
+  const material = materials.find(m => m.id === part.stock_material_id);
+
+  const startEdit = () => {
+    setEditData({
+      description: part.description,
+      finished_weight: part.finished_weight,
+      supplier_code: part.supplier_code,
+      revision_notes: part.revision_notes
+    });
+    setIsEditing(true);
+  };
+
+  const saveEdit = () => {
+    onUpdatePart(part.id, editData);
+    setIsEditing(false);
+  };
+
+  const handleStatusToggle = () => {
+    const newStatus = part.status === 'active' ? 'obsolete' : 'active';
+    onUpdatePart(part.id, { status: newStatus });
+  };
+
+  const getPartTypeBadgeColor = (type) => {
+    const colors = {
+      manufactured: 'var(--accent-blue)',
+      purchased: 'var(--accent-orange)',
+      assembly: 'var(--accent-green)'
+    };
+    return colors[type] || 'var(--text-muted)';
+  };
+
+  const getPartTypeLabel = (type) => {
+    const labels = { manufactured: 'Manufactured', purchased: 'Purchased', assembly: 'Assembly' };
+    return labels[type] || type;
+  };
+
+  return (
+    <>
+      <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 16 }}>← Back to Parts</button>
+      <div className="detail-panel">
+        <div className="detail-header">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span className="project-number" style={{ fontSize: 16 }}>{part.part_number}</span>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                background: `${getPartTypeBadgeColor(part.type)}22`,
+                color: getPartTypeBadgeColor(part.type)
+              }}>{getPartTypeLabel(part.type)}</span>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                padding: '4px 10px',
+                borderRadius: '12px',
+                background: part.status === 'active' ? 'rgba(52,211,153,0.15)' : 'rgba(251,191,36,0.15)',
+                color: part.status === 'active' ? 'var(--accent-green)' : '#fbbf24'
+              }}>{part.status}</span>
+            </div>
+            {isEditing ? (
+              <input type="text" className="form-input" value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }} />
+            ) : (
+              <h2 style={{ fontSize: 22, marginBottom: 4 }}>{part.description}</h2>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isEditing ? (
+              <>
+                <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button>
+                <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button>
+                <button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this part?')) onDeletePart(part.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="info-grid">
+          <div className="info-card"><div className="info-label">UOM</div><div className="info-value">{part.uom || 'EA'}</div></div>
+          <div className="info-card">
+            <div className="info-label">Finished Weight</div>
+            {isEditing ? (
+              <input type="number" className="form-input" step="0.001" value={editData.finished_weight || ''} onChange={e => setEditData({ ...editData, finished_weight: e.target.value })} />
+            ) : (
+              <div className="info-value">{part.finished_weight ? `${parseFloat(part.finished_weight).toFixed(3)} kg` : '-'}</div>
+            )}
+          </div>
+
+          {part.type === 'purchased' && (
+            <>
+              <div className="info-card"><div className="info-label">Supplier</div><div className="info-value">{supplier?.name || '-'}</div></div>
+              <div className="info-card">
+                <div className="info-label">Supplier Code</div>
+                {isEditing ? (
+                  <input type="text" className="form-input" value={editData.supplier_code || ''} onChange={e => setEditData({ ...editData, supplier_code: e.target.value })} />
+                ) : (
+                  <div className="info-value">{part.supplier_code || '-'}</div>
+                )}
+              </div>
+            </>
+          )}
+
+          {part.type === 'manufactured' && (
+            <>
+              <div className="info-card"><div className="info-label">Stock Material</div><div className="info-value">{material?.name || '-'}</div></div>
+              <div className="info-card"><div className="info-label">Stock Form</div><div className="info-value">{part.stock_form ? part.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}</div></div>
+            </>
+          )}
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          <button className={`btn ${part.status === 'active' ? 'btn-secondary' : 'btn-primary'}`} onClick={handleStatusToggle}>
+            {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
+          </button>
+        </div>
+
+        {isEditing && (
+          <div className="notes-section" style={{ marginTop: 24 }}>
+            <div className="form-group">
+              <label className="form-label">Revision Notes</label>
+              <textarea className="form-textarea" rows="4" placeholder="Add revision notes..." value={editData.revision_notes || ''} onChange={e => setEditData({ ...editData, revision_notes: e.target.value })} />
+            </div>
+          </div>
+        )}
+
+        {!isEditing && part.revision_notes && (
+          <div className="notes-section" style={{ marginTop: 24 }}>
+            <div className="notes-header">
+              <div className="notes-title"><Icons.FileText /> Revision Notes</div>
+            </div>
+            <div style={{ padding: 16, color: 'var(--text-primary)' }}>{part.revision_notes}</div>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
