@@ -202,6 +202,7 @@ const Icons = {
   Package: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
   Truck: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>,
   Layers: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  Settings: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m5.196-13.196l-4.242 4.242m0 5.656l-4.242 4.242M23 12h-6m-6 0H1m18.196 5.196l-4.242-4.242m-5.656 0l-4.242 4.242"/></svg>,
 };
 
 // ============================================
@@ -413,6 +414,7 @@ function MainApp({ user, onLogout }) {
   const [materials, setMaterials] = useState([]);
   const [machines, setMachines] = useState([]);
   const [bomRelations, setBomRelations] = useState([]);
+  const [operations, setOperations] = useState([]);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
@@ -433,6 +435,7 @@ function MainApp({ user, onLogout }) {
       const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
       const { data: machinesData } = await supabase.from('machines').select('*').order('name');
       const { data: bomData } = await supabase.from('bom_relations').select('*');
+      const { data: operationsData } = await supabase.from('operations').select('*');
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -441,6 +444,7 @@ function MainApp({ user, onLogout }) {
       setParts(partsData || []);
       setMachines(machinesData || []);
       setBomRelations(bomData || []);
+      setOperations(operationsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -773,6 +777,84 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // MACHINES HANDLERS
+  // ============================================
+  const handleAddMachine = async (machineData) => {
+    try {
+      const { data, error } = await supabase.from('machines').insert(machineData).select().single();
+      if (error) throw error;
+      setMachines([...machines, data].sort((a, b) => a.name.localeCompare(b.name)));
+      showToast('Machine added');
+    } catch (err) {
+      console.error('Error adding machine:', err);
+      showToast('Error adding machine', 'error');
+    }
+  };
+
+  const handleUpdateMachine = async (machineId, updates) => {
+    try {
+      const { error } = await supabase.from('machines').update(updates).eq('id', machineId);
+      if (error) throw error;
+      setMachines(machines.map(m => m.id === machineId ? { ...m, ...updates } : m));
+      showToast('Machine updated');
+    } catch (err) {
+      console.error('Error updating machine:', err);
+      showToast('Error updating machine', 'error');
+    }
+  };
+
+  const handleDeleteMachine = async (machineId) => {
+    try {
+      const { error } = await supabase.from('machines').delete().eq('id', machineId);
+      if (error) throw error;
+      setMachines(machines.filter(m => m.id !== machineId));
+      showToast('Machine deleted');
+    } catch (err) {
+      console.error('Error deleting machine:', err);
+      showToast('Error deleting machine', 'error');
+    }
+  };
+
+  // ============================================
+  // OPERATIONS HANDLERS
+  // ============================================
+  const handleAddOperation = async (operationData) => {
+    try {
+      const { data, error } = await supabase.from('operations').insert(operationData).select().single();
+      if (error) throw error;
+      setOperations([...operations, data]);
+      showToast('Operation added');
+    } catch (err) {
+      console.error('Error adding operation:', err);
+      showToast('Error adding operation', 'error');
+    }
+  };
+
+  const handleUpdateOperation = async (opId, updates) => {
+    try {
+      const { error } = await supabase.from('operations').update(updates).eq('id', opId);
+      if (error) throw error;
+      setOperations(operations.map(op => op.id === opId ? { ...op, ...updates } : op));
+      showToast('Operation updated');
+    } catch (err) {
+      console.error('Error updating operation:', err);
+      showToast('Error updating operation', 'error');
+    }
+  };
+
+  const handleDeleteOperation = async (opId) => {
+    try {
+      const { error } = await supabase.from('operations').delete().eq('id', opId);
+      if (error) throw error;
+      setOperations(operations.filter(op => op.id !== opId));
+      showToast('Operation deleted');
+    } catch (err) {
+      console.error('Error deleting operation:', err);
+      showToast('Error deleting operation', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -824,6 +906,7 @@ function MainApp({ user, onLogout }) {
               <div className={`nav-item ${activeView === 'parts' ? 'active' : ''}`} onClick={() => { setActiveView('parts'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Package /><span>Parts</span></div>
               <div className={`nav-item ${activeView === 'suppliers' ? 'active' : ''}`} onClick={() => { setActiveView('suppliers'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Truck /><span>Suppliers</span></div>
               <div className={`nav-item ${activeView === 'materials' ? 'active' : ''}`} onClick={() => { setActiveView('materials'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Layers /><span>Materials</span></div>
+              <div className={`nav-item ${activeView === 'machines' ? 'active' : ''}`} onClick={() => { setActiveView('machines'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Settings /><span>Machines</span></div>
             </div>
           </nav>
           <main className="content-area">
@@ -832,8 +915,9 @@ function MainApp({ user, onLogout }) {
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
+            {activeView === 'machines' && (<MachinesView machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
           </main>
         </div>
         {showAddProjectModal && (<AddProjectModal customers={customers} nextProjectNumber={getNextProjectNumber()} onClose={() => setShowAddProjectModal(false)} onSave={handleAddProject} />)}
@@ -1172,6 +1256,61 @@ function MaterialsView({ materials, parts, onAddMaterial, onUpdateMaterial, onDe
 }
 
 // ============================================
+// MACHINES VIEW
+// ============================================
+function MachinesView({ machines, onAddMachine, onUpdateMachine, onDeleteMachine }) {
+  const [newMachine, setNewMachine] = useState({ name: '', type: 'mill' });
+  const [editingId, setEditingId] = useState(null);
+  const [editData, setEditData] = useState({});
+
+  const handleAdd = () => {
+    if (!newMachine.name) return;
+    onAddMachine(newMachine);
+    setNewMachine({ name: '', type: 'mill' });
+  };
+  const startEdit = (machine) => { setEditingId(machine.id); setEditData({ ...machine }); };
+  const saveEdit = () => { onUpdateMachine(editingId, editData); setEditingId(null); };
+
+  const machineTypes = [
+    { value: 'mill', label: 'Mill' },
+    { value: 'lathe', label: 'Lathe' },
+    { value: 'other', label: 'Other' }
+  ];
+
+  return (
+    <>
+      <div className="page-header"><div><h1 className="page-title">Machines</h1><p className="page-subtitle">Manage workshop machines</p></div></div>
+      <div className="card" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 16, alignItems: 'end' }}>
+          <div className="form-group" style={{ margin: 0 }}><label className="form-label">Machine Name *</label><input type="text" className="form-input" placeholder="e.g., Haas VF3" value={newMachine.name} onChange={e => setNewMachine({ ...newMachine, name: e.target.value })} /></div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label">Type *</label>
+            <select className="form-select" value={newMachine.type} onChange={e => setNewMachine({ ...newMachine, type: e.target.value })}>
+              {machineTypes.map(t => (<option key={t.value} value={t.value}>{t.label}</option>))}
+            </select>
+          </div>
+          <button className="btn btn-primary" onClick={handleAdd}><Icons.Plus /> Add Machine</button>
+        </div>
+      </div>
+      <div className="table-container">
+        <table className="table">
+          <thead><tr><th>Machine Name</th><th>Type</th><th></th></tr></thead>
+          <tbody>
+            {machines.map(machine => {
+              const isEditing = editingId === machine.id;
+              if (isEditing) {
+                return (<tr key={machine.id}><td><input type="text" className="form-input" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} style={{ padding: '6px 10px' }} /></td><td><select className="form-select" value={editData.type} onChange={e => setEditData({ ...editData, type: e.target.value })} style={{ padding: '6px 10px' }}>{machineTypes.map(t => (<option key={t.value} value={t.value}>{t.label}</option>))}</select></td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={saveEdit} style={{ color: 'var(--accent-green)' }}><Icons.Check /></button><button className="btn btn-ghost" onClick={() => setEditingId(null)}><Icons.X /></button></div></td></tr>);
+              }
+              return (<tr key={machine.id}><td><strong>{machine.name}</strong></td><td><span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{machine.type}</span></td><td><div style={{ display: 'flex', gap: 4 }}><button className="btn btn-ghost" onClick={() => startEdit(machine)}><Icons.Pencil /></button><button className="btn btn-ghost" onClick={() => { if (confirm('Delete this machine?')) onDeleteMachine(machine.id); }}><Icons.Trash /></button></div></td></tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ============================================
 // PARTS VIEW
 // ============================================
 function PartsView({ parts, suppliers, materials, onSelectPart, onAddPart }) {
@@ -1494,17 +1633,22 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
 // ============================================
 // PART DETAIL VIEW
 // ============================================
-function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem }) {
+function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [showAddBomItem, setShowAddBomItem] = useState(false);
   const [newBomItem, setNewBomItem] = useState({ child_id: '', quantity: 1, position: '' });
+  const [showAddOperation, setShowAddOperation] = useState(false);
+  const [newOperation, setNewOperation] = useState({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
 
   const supplier = suppliers.find(s => s.id === part.supplier_id);
   const material = materials.find(m => m.id === part.stock_material_id);
 
   // Get BOM items for this assembly
   const bomItems = bomRelations.filter(b => b.parent_id === part.id);
+
+  // Get operations for this manufactured part
+  const partOperations = operations.filter(op => op.part_id === part.id).sort((a, b) => a.op_number.localeCompare(b.op_number));
 
   // Get child part details
   const getChildPart = (childId) => parts.find(p => p.id === childId);
@@ -1531,6 +1675,16 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
       }
     });
     return totalWeight;
+  };
+
+  // Calculate total cycle time for manufactured parts
+  const calculateTotalCycleTime = () => {
+    return partOperations.reduce((total, op) => total + (parseInt(op.cycle_time) || 0), 0);
+  };
+
+  const getMachineName = (machineId) => {
+    const machine = machines.find(m => m.id === machineId);
+    return machine ? machine.name : '-';
   };
 
   const startEdit = () => {
@@ -1813,6 +1967,106 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
             ) : (
               <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                 No components in BOM yet. Click "Add Component" to start building the assembly.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Operations Section for Manufactured Parts */}
+        {part.type === 'manufactured' && (
+          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Settings /> Manufacturing Routing
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAddOperation(!showAddOperation)}>
+                <Icons.Plus /> Add Operation
+              </button>
+            </div>
+
+            {/* Add Operation Form */}
+            {showAddOperation && (
+              <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                <div className="form-row">
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Op Number *</label>
+                    <input type="text" className="form-input" placeholder="e.g., OP10" value={newOperation.op_number} onChange={e => setNewOperation({ ...newOperation, op_number: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Machine</label>
+                    <select className="form-select" value={newOperation.machine_id} onChange={e => setNewOperation({ ...newOperation, machine_id: e.target.value })}>
+                      <option value="">Select machine...</option>
+                      {machines.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Program Name</label>
+                    <input type="text" className="form-input" placeholder="e.g., O1234" value={newOperation.program_name} onChange={e => setNewOperation({ ...newOperation, program_name: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Cycle Time (min)</label>
+                    <input type="number" className="form-input" min="0" value={newOperation.cycle_time} onChange={e => setNewOperation({ ...newOperation, cycle_time: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label className="form-label">Description</label>
+                  <input type="text" className="form-input" placeholder="Operation description" value={newOperation.description} onChange={e => setNewOperation({ ...newOperation, description: e.target.value })} />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-primary" onClick={() => {
+                    if (!newOperation.op_number) { alert('Please enter operation number'); return; }
+                    onAddOperation({ ...newOperation, part_id: part.id });
+                    setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
+                    setShowAddOperation(false);
+                  }}><Icons.Check /> Add</button>
+                  <button className="btn btn-secondary" onClick={() => { setShowAddOperation(false); setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 }); }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Operations Table */}
+            {partOperations.length > 0 ? (
+              <>
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr><th>Op #</th><th>Machine</th><th>Program</th><th>Description</th><th>Cycle Time</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                      {partOperations.map(op => (
+                        <tr key={op.id}>
+                          <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{op.op_number}</strong></td>
+                          <td>{getMachineName(op.machine_id)}</td>
+                          <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{op.program_name || '-'}</td>
+                          <td>{op.description || '-'}</td>
+                          <td>{op.cycle_time || 0} min</td>
+                          <td>
+                            <button className="btn btn-ghost" onClick={() => { if (confirm('Delete this operation?')) onDeleteOperation(op.id); }} style={{ color: '#ef4444' }}>
+                              <Icons.Trash />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: 16, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Cycle Time</div>
+                      <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--accent-blue)' }}>
+                        {calculateTotalCycleTime()} min
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {partOperations.length} operation{partOperations.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                No operations defined yet. Click "Add Operation" to start building the routing.
               </div>
             )}
           </div>
