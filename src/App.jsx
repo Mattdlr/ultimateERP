@@ -292,6 +292,60 @@ const StockCalculations = {
 };
 
 // ============================================
+// PART NUMBER UTILITIES
+// ============================================
+const PartNumberUtils = {
+  // Parse a part number into components
+  parse: (partNumber) => {
+    if (!partNumber) return null;
+    const match = partNumber.match(/^UL-(\d{4})-(\d{2})$/);
+    if (!match) return null;
+    return {
+      prefix: 'UL',
+      number: parseInt(match[1], 10),
+      revision: parseInt(match[2], 10),
+      numberStr: match[1],
+      revisionStr: match[2]
+    };
+  },
+
+  // Generate the next available part number
+  getNextPartNumber: (existingParts) => {
+    let maxNumber = 0;
+
+    existingParts.forEach(part => {
+      const parsed = PartNumberUtils.parse(part.part_number);
+      if (parsed && parsed.number > maxNumber) {
+        maxNumber = parsed.number;
+      }
+    });
+
+    const nextNumber = (maxNumber + 1).toString().padStart(4, '0');
+    return `UL-${nextNumber}-01`;
+  },
+
+  // Increment the revision of a part number
+  incrementRevision: (partNumber) => {
+    const parsed = PartNumberUtils.parse(partNumber);
+    if (!parsed) return null;
+
+    const newRevision = (parsed.revision + 1).toString().padStart(2, '0');
+    return `UL-${parsed.numberStr}-${newRevision}`;
+  },
+
+  // Format a part number display with highlighting
+  formatDisplay: (partNumber) => {
+    const parsed = PartNumberUtils.parse(partNumber);
+    if (!parsed) return partNumber;
+    return {
+      prefix: 'UL',
+      number: parsed.numberStr,
+      revision: parsed.revisionStr
+    };
+  }
+};
+
+// ============================================
 // LOGIN COMPONENT
 // ============================================
 function LoginPage({ onLogin }) {
@@ -648,6 +702,30 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  const handleIncrementRevision = async (part) => {
+    const newPartNumber = PartNumberUtils.incrementRevision(part.part_number);
+    if (!newPartNumber) {
+      showToast('Invalid part number format', 'error');
+      return;
+    }
+
+    if (!confirm(`Increment revision from ${part.part_number} to ${newPartNumber}?\n\nThis will update the part number and you can add revision notes.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('parts').update({ part_number: newPartNumber }).eq('id', part.id);
+      if (error) throw error;
+      const updatedPart = { ...part, part_number: newPartNumber };
+      setParts(parts.map(p => p.id === part.id ? updatedPart : p));
+      setSelectedPart(updatedPart);
+      showToast(`Revision incremented to ${newPartNumber}`);
+    } catch (err) {
+      console.error('Error incrementing revision:', err);
+      showToast('Error incrementing revision', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -708,11 +786,11 @@ function MainApp({ user, onLogout }) {
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} suppliers={suppliers} materials={materials} machines={machines} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} suppliers={suppliers} materials={materials} machines={machines} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} />)}
           </main>
         </div>
         {showAddProjectModal && (<AddProjectModal customers={customers} nextProjectNumber={getNextProjectNumber()} onClose={() => setShowAddProjectModal(false)} onSave={handleAddProject} />)}
-        {showAddPartModal && (<AddPartModal suppliers={suppliers} materials={materials} onClose={() => setShowAddPartModal(false)} onSave={handleAddPart} />)}
+        {showAddPartModal && (<AddPartModal suppliers={suppliers} materials={materials} parts={parts} onClose={() => setShowAddPartModal(false)} onSave={handleAddPart} />)}
         {toast && (<div className={`toast ${toast.type}`}>{toast.type === 'success' ? <Icons.Check /> : <Icons.X />}<span>{toast.message}</span></div>)}
       </div>
     </>
@@ -1207,9 +1285,11 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
 // ============================================
 // ADD PART MODAL
 // ============================================
-function AddPartModal({ suppliers, materials, onClose, onSave }) {
+function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
+  const nextPartNumber = PartNumberUtils.getNextPartNumber(parts);
+
   const [formData, setFormData] = useState({
-    part_number: '',
+    part_number: nextPartNumber,
     description: '',
     type: 'manufactured',
     uom: 'EA',
@@ -1224,8 +1304,8 @@ function AddPartModal({ suppliers, materials, onClose, onSave }) {
   });
 
   const handleSubmit = () => {
-    if (!formData.part_number || !formData.description) {
-      alert('Please fill in part number and description');
+    if (!formData.description) {
+      alert('Please fill in part description');
       return;
     }
     if (formData.type === 'purchased' && !formData.supplier_id) {
@@ -1251,20 +1331,21 @@ function AddPartModal({ suppliers, materials, onClose, onSave }) {
           <button className="modal-close" onClick={onClose}><Icons.X /></button>
         </div>
         <div className="modal-body">
-          {/* Basic Part Info */}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Part Number *</label>
-              <input type="text" className="form-input" placeholder="e.g., P-0001" value={formData.part_number} onChange={e => setFormData({ ...formData, part_number: e.target.value })} />
-            </div>
-            <div className="form-group">
-              <label className="form-label">UOM</label>
-              <input type="text" className="form-input" placeholder="EA" value={formData.uom} onChange={e => setFormData({ ...formData, uom: e.target.value })} />
-            </div>
+          {/* Auto-generated Part Number Display */}
+          <div style={{ background: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: 8, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Part Number:</span>
+            <span className="project-number" style={{ fontSize: 16, fontFamily: 'monospace' }}>{nextPartNumber}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>(auto-generated)</span>
           </div>
+
+          {/* Basic Part Info */}
           <div className="form-group">
             <label className="form-label">Description *</label>
             <input type="text" className="form-input" placeholder="Part description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">UOM</label>
+            <input type="text" className="form-input" placeholder="EA" value={formData.uom} onChange={e => setFormData({ ...formData, uom: e.target.value })} />
           </div>
 
           {/* Part Type Selection */}
@@ -1366,7 +1447,7 @@ function AddPartModal({ suppliers, materials, onClose, onSave }) {
 // ============================================
 // PART DETAIL VIEW
 // ============================================
-function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdatePart, onDeletePart }) {
+function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdatePart, onDeletePart, onIncrementRevision }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
 
@@ -1519,9 +1600,12 @@ function PartDetailView({ part, suppliers, materials, machines, onBack, onUpdate
           </div>
         )}
 
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button className={`btn ${part.status === 'active' ? 'btn-secondary' : 'btn-primary'}`} onClick={handleStatusToggle}>
             {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
+          </button>
+          <button className="btn btn-primary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)' }}>
+            🔄 Increment Revision
           </button>
         </div>
 
