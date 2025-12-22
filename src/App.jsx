@@ -509,7 +509,7 @@ function MainApp({ user, onLogout }) {
 
   const handleAddNote = async (projectId, text) => {
     try {
-      const { data, error } = await supabase.from('project_notes').insert({ project_id: projectId, text: text, created_by: user.id }).select().single();
+      const { data, error } = await supabase.from('project_notes').insert({ project_id: projectId, text: text, created_by: user.id, created_by_email: user.email }).select().single();
       if (error) throw error;
       const updatedProjects = projects.map(p => p.id === projectId ? { ...p, project_notes: [...(p.project_notes || []), data] } : p);
       setProjects(updatedProjects);
@@ -1260,7 +1260,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
         <div className="notes-section">
           <div className="notes-header"><div className="notes-title"><Icons.FileText /> Project Notes</div><span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{notes.length} note{notes.length !== 1 ? 's' : ''}</span></div>
           <div className="notes-list">
-            {notes.length === 0 ? (<div style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>No notes yet</div>) : ([...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(note => (<div key={note.id} className="note-item"><div className="note-timestamp">{formatDateTime(note.created_at)}</div><div className="note-text">{note.text}</div></div>)))}
+            {notes.length === 0 ? (<div style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>No notes yet</div>) : ([...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(note => (<div key={note.id} className="note-item"><div className="note-timestamp">{formatDateTime(note.created_at)} {note.created_by_email && <span style={{ color: 'var(--accent-orange)', marginLeft: 8 }}>• {note.created_by_email}</span>}</div><div className="note-text">{note.text}</div></div>)))}
           </div>
           <div className="add-note-form">
             <textarea className="form-input" placeholder="Add a note..." value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }} />
