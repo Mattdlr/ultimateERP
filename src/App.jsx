@@ -530,7 +530,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteProject = async (projectId) => {
     try {
-      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+      const { error } = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', projectId);
       if (error) throw error;
       setProjects(projects.filter(p => p.id !== projectId));
       setSelectedProject(null);
@@ -569,7 +569,7 @@ function MainApp({ user, onLogout }) {
     const inUse = projects.some(p => p.customer_id === customerId);
     if (inUse) { showToast('Cannot delete: customer has projects', 'error'); return; }
     try {
-      const { error } = await supabase.from('customers').delete().eq('id', customerId);
+      const { error } = await supabase.from('customers').update({ deleted_at: new Date().toISOString() }).eq('id', customerId);
       if (error) throw error;
       setCustomers(customers.filter(c => c.id !== customerId));
       showToast('Customer deleted');
@@ -610,7 +610,7 @@ function MainApp({ user, onLogout }) {
     const inUse = parts.some(p => p.supplier_id === supplierId);
     if (inUse) { showToast('Cannot delete: supplier has parts', 'error'); return; }
     try {
-      const { error } = await supabase.from('suppliers').delete().eq('id', supplierId);
+      const { error } = await supabase.from('suppliers').update({ deleted_at: new Date().toISOString() }).eq('id', supplierId);
       if (error) throw error;
       setSuppliers(suppliers.filter(s => s.id !== supplierId));
       showToast('Supplier deleted');
@@ -651,7 +651,7 @@ function MainApp({ user, onLogout }) {
     const inUse = parts.some(p => p.stock_material_id === materialId);
     if (inUse) { showToast('Cannot delete: material is in use', 'error'); return; }
     try {
-      const { error } = await supabase.from('materials').delete().eq('id', materialId);
+      const { error } = await supabase.from('materials').update({ deleted_at: new Date().toISOString() }).eq('id', materialId);
       if (error) throw error;
       setMaterials(materials.filter(m => m.id !== materialId));
       showToast('Material deleted');
@@ -716,7 +716,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeletePart = async (partId) => {
     try {
-      const { error } = await supabase.from('parts').delete().eq('id', partId);
+      const { error } = await supabase.from('parts').update({ deleted_at: new Date().toISOString() }).eq('id', partId);
       if (error) throw error;
       setParts(parts.filter(p => p.id !== partId));
       setSelectedPart(null);
@@ -824,7 +824,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteMachine = async (machineId) => {
     try {
-      const { error } = await supabase.from('machines').delete().eq('id', machineId);
+      const { error } = await supabase.from('machines').update({ deleted_at: new Date().toISOString() }).eq('id', machineId);
       if (error) throw error;
       setMachines(machines.filter(m => m.id !== machineId));
       showToast('Machine deleted');
@@ -863,7 +863,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteOperation = async (opId) => {
     try {
-      const { error } = await supabase.from('operations').delete().eq('id', opId);
+      const { error } = await supabase.from('operations').update({ deleted_at: new Date().toISOString() }).eq('id', opId);
       if (error) throw error;
       setOperations(operations.filter(op => op.id !== opId));
       showToast('Operation deleted');
@@ -917,7 +917,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteCheckin = async (checkinId) => {
     try {
-      const { error } = await supabase.from('project_checkins').delete().eq('id', checkinId);
+      const { error } = await supabase.from('project_checkins').update({ deleted_at: new Date().toISOString() }).eq('id', checkinId);
       if (error) throw error;
       setCheckins(checkins.filter(c => c.id !== checkinId));
       setCheckinItems(checkinItems.filter(item => item.checkin_id !== checkinId));
