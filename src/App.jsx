@@ -154,6 +154,11 @@ const styles = `
   .print-preview-body .print-table td { border: 1px solid #ccc; padding: 10px 12px; }
   .print-preview-body .print-table tr:nth-child(even) td { background: #f9f9f9; }
   .print-preview-body .print-footer { margin-top: 24px; font-size: 11px; color: #999; text-align: right; }
+  .label-preview-body { padding: 40px; display: flex; justify-content: center; align-items: center; min-height: 300px; background: #f5f5f5; }
+  .project-label { width: 100mm; height: 50mm; background: white; border: 2px solid #333; padding: 12px; display: flex; flex-direction: column; justify-content: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .label-project-number { font-size: 24px; font-weight: bold; color: #1a1a1a; font-family: monospace; }
+  .label-customer { font-size: 14px; font-weight: 600; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
+  .label-description { font-size: 12px; color: #666; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
   .mobile-menu-btn { display: none; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 12px; color: var(--text-primary); cursor: pointer; }
   .sidebar-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 999; }
   .sidebar-overlay.visible { display: block; }
@@ -183,6 +188,8 @@ const styles = `
     .print-preview-content { max-width: none !important; max-height: none !important; box-shadow: none !important; margin: 0 !important; }
     .print-preview-body { padding: 20px !important; }
     .print-table { width: 100% !important; }
+    .label-preview-body { padding: 0 !important; background: white !important; display: block !important; min-height: auto !important; }
+    .project-label { width: 100mm !important; height: 50mm !important; margin: 0 !important; border: 2px solid #000 !important; box-shadow: none !important; page-break-after: always; }
   }
 `;
 
@@ -1188,6 +1195,7 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
 function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin }) {
   const [showAddCheckinModal, setShowAddCheckinModal] = useState(false);
   const [expandedCheckins, setExpandedCheckins] = useState([]);
+  const [showLabelPreview, setShowLabelPreview] = useState(false);
 
   // Get check-ins for this project
   const projectCheckins = checkins.filter(c => c.project_id === project.id);
@@ -1240,7 +1248,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
             <p style={{ color: 'var(--text-secondary)' }}>{customer?.name || 'Unknown Customer'}</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {isEditing ? (<><button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button><button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button></>) : (<><button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button><button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this project?')) onDeleteProject(project.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button></>)}
+            {isEditing ? (<><button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button><button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button></>) : (<><button className="btn btn-secondary" onClick={() => setShowLabelPreview(true)}><Icons.Printer /> Print Label</button><button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button><button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this project?')) onDeleteProject(project.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button></>)}
           </div>
         </div>
         <div className="info-grid">
@@ -1359,6 +1367,28 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
           onClose={() => setShowAddCheckinModal(false)}
           onSave={onAddCheckin}
         />
+      )}
+
+      {/* Label Preview Modal */}
+      {showLabelPreview && (
+        <div className="print-preview-modal" onClick={() => setShowLabelPreview(false)}>
+          <div className="print-preview-content" onClick={e => e.stopPropagation()}>
+            <div className="print-preview-toolbar">
+              <h3>Print Project Label</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={() => window.print()}><Icons.Printer /> Print</button>
+                <button className="btn btn-secondary" onClick={() => setShowLabelPreview(false)}>Close</button>
+              </div>
+            </div>
+            <div className="label-preview-body">
+              <div className="project-label">
+                <div className="label-project-number">#{project.project_number}</div>
+                <div className="label-customer">{customer?.name || 'Unknown Customer'}</div>
+                <div className="label-description">{project.title}</div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
