@@ -418,6 +418,10 @@ function MainApp({ user, onLogout }) {
   const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
+  // Project check-ins state
+  const [checkins, setCheckins] = useState([]);
+  const [checkinItems, setCheckinItems] = useState([]);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -436,6 +440,8 @@ function MainApp({ user, onLogout }) {
       const { data: machinesData } = await supabase.from('machines').select('*').order('name');
       const { data: bomData } = await supabase.from('bom_relations').select('*');
       const { data: operationsData } = await supabase.from('operations').select('*');
+      const { data: checkinsData } = await supabase.from('project_checkins').select('*').order('checkin_date', { ascending: false });
+      const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -445,6 +451,8 @@ function MainApp({ user, onLogout }) {
       setMachines(machinesData || []);
       setBomRelations(bomData || []);
       setOperations(operationsData || []);
+      setCheckins(checkinsData || []);
+      setCheckinItems(checkinItemsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -855,6 +863,61 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // CHECK-INS HANDLERS
+  // ============================================
+  const handleAddCheckin = async (checkinData) => {
+    try {
+      // Create the check-in
+      const { data: checkin, error: checkinError } = await supabase
+        .from('project_checkins')
+        .insert({
+          project_id: checkinData.project_id,
+          checkin_date: checkinData.checkin_date,
+          notes: checkinData.notes,
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (checkinError) throw checkinError;
+
+      // Create the check-in items
+      const itemsToInsert = checkinData.items.map(item => ({
+        checkin_id: checkin.id,
+        description: item.description,
+        quantity: item.quantity
+      }));
+
+      const { data: items, error: itemsError } = await supabase
+        .from('checkin_items')
+        .insert(itemsToInsert)
+        .select();
+
+      if (itemsError) throw itemsError;
+
+      setCheckins([checkin, ...checkins]);
+      setCheckinItems([...checkinItems, ...items]);
+      showToast('Check-in added successfully');
+    } catch (err) {
+      console.error('Error adding check-in:', err);
+      showToast('Error adding check-in', 'error');
+    }
+  };
+
+  const handleDeleteCheckin = async (checkinId) => {
+    try {
+      const { error } = await supabase.from('project_checkins').delete().eq('id', checkinId);
+      if (error) throw error;
+      setCheckins(checkins.filter(c => c.id !== checkinId));
+      setCheckinItems(checkinItems.filter(item => item.checkin_id !== checkinId));
+      showToast('Check-in deleted');
+    } catch (err) {
+      console.error('Error deleting check-in:', err);
+      showToast('Error deleting check-in', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -911,7 +974,7 @@ function MainApp({ user, onLogout }) {
           </nav>
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
-            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} />)}
+            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} />)}
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
@@ -1039,7 +1102,24 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
 // ============================================
 // PROJECT DETAIL VIEW
 // ============================================
-function ProjectDetailView({ project, customer, onBack, onUpdateProject, onAddNote, onDeleteProject }) {
+function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin }) {
+  const [showAddCheckinModal, setShowAddCheckinModal] = useState(false);
+  const [expandedCheckins, setExpandedCheckins] = useState([]);
+
+  // Get check-ins for this project
+  const projectCheckins = checkins.filter(c => c.project_id === project.id);
+
+  // Get items for a specific check-in
+  const getCheckinItems = (checkinId) => checkinItems.filter(item => item.checkin_id === checkinId);
+
+  // Toggle check-in expansion
+  const toggleCheckin = (checkinId) => {
+    if (expandedCheckins.includes(checkinId)) {
+      setExpandedCheckins(expandedCheckins.filter(id => id !== checkinId));
+    } else {
+      setExpandedCheckins([...expandedCheckins, checkinId]);
+    }
+  };
   const [newNote, setNewNote] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -1104,8 +1184,224 @@ function ProjectDetailView({ project, customer, onBack, onUpdateProject, onAddNo
             <button className="btn btn-primary" onClick={handleAddNote} disabled={!newNote.trim()}><Icons.Plus /> Add Note</button>
           </div>
         </div>
+
+        {/* Parts Check-ins Section */}
+        <div className="card" style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Package /> Parts Check-ins
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Track parts received from customer
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowAddCheckinModal(true)}>
+              <Icons.Plus /> New Check-in
+            </button>
+          </div>
+
+          {projectCheckins.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {projectCheckins.map(checkin => {
+                const items = getCheckinItems(checkin.id);
+                const isExpanded = expandedCheckins.includes(checkin.id);
+                return (
+                  <div key={checkin.id} className="card" style={{ background: 'var(--bg-tertiary)', padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>{formatDate(checkin.checkin_date)}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {items.length} item{items.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {checkin.notes && (
+                          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                            {checkin.notes}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => toggleCheckin(checkin.id)}
+                          style={{ padding: '4px 8px' }}
+                        >
+                          {isExpanded ? '▼ Hide' : '▶ Show'} Items
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => { if (confirm('Delete this check-in?')) onDeleteCheckin(checkin.id); }}
+                          style={{ color: '#ef4444', padding: '4px 8px' }}
+                        >
+                          <Icons.Trash />
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded && items.length > 0 && (
+                      <div className="table-container" style={{ marginTop: 12 }}>
+                        <table className="table">
+                          <thead>
+                            <tr><th>Description</th><th>Quantity</th></tr>
+                          </thead>
+                          <tbody>
+                            {items.map(item => (
+                              <tr key={item.id}>
+                                <td>{item.description}</td>
+                                <td style={{ fontWeight: 600 }}>{item.quantity}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              No check-ins yet. Click "New Check-in" to record parts received from the customer.
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Add Check-in Modal */}
+      {showAddCheckinModal && (
+        <AddCheckinModal
+          projectId={project.id}
+          onClose={() => setShowAddCheckinModal(false)}
+          onSave={onAddCheckin}
+        />
+      )}
     </>
+  );
+}
+
+// ============================================
+// ADD CHECK-IN MODAL
+// ============================================
+function AddCheckinModal({ projectId, onClose, onSave }) {
+  const [checkinDate, setCheckinDate] = useState(new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState([{ description: '', quantity: 1 }]);
+
+  const addItem = () => {
+    setItems([...items, { description: '', quantity: 1 }]);
+  };
+
+  const removeItem = (index) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const updateItem = (index, field, value) => {
+    const newItems = [...items];
+    newItems[index][field] = value;
+    setItems(newItems);
+  };
+
+  const handleSubmit = () => {
+    // Validate
+    const validItems = items.filter(item => item.description.trim());
+    if (validItems.length === 0) {
+      alert('Please add at least one item with a description');
+      return;
+    }
+
+    onSave({
+      project_id: projectId,
+      checkin_date: checkinDate,
+      notes: notes.trim(),
+      items: validItems
+    });
+
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+        <div className="modal-header">
+          <h2 className="modal-title"><Icons.Package /> New Parts Check-in</h2>
+          <button className="modal-close" onClick={onClose}><Icons.X /></button>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label className="form-label">Check-in Date *</label>
+            <input
+              type="date"
+              className="form-input"
+              value={checkinDate}
+              onChange={e => setCheckinDate(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <textarea
+              className="form-textarea"
+              rows="2"
+              placeholder="Optional notes about this check-in..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label className="form-label" style={{ margin: 0 }}>Items *</label>
+              <button className="btn btn-sm btn-secondary" onClick={addItem}>
+                <Icons.Plus /> Add Item
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {items.map((item, index) => (
+                <div key={index} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: 12 }}>Description</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Part description"
+                      value={item.description}
+                      onChange={e => updateItem(index, 'description', e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: 12 }}>Quantity</label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      min="1"
+                      value={item.quantity}
+                      onChange={e => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => removeItem(index)}
+                    disabled={items.length === 1}
+                    style={{ opacity: items.length === 1 ? 0.3 : 1 }}
+                  >
+                    <Icons.Trash />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit}>
+            <Icons.Check /> Save Check-in
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
