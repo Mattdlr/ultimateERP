@@ -176,10 +176,13 @@ const styles = `
     .add-note-form button { width: 100%; }
   }
   @media print {
-    .app-container, .header, .sidebar, .sidebar-overlay, .toast, .page-header, .filter-row, .search-box, .stats-row, .mobile-menu-btn, .project-cards, .main-content, .content-area, .print-preview-toolbar { display: none !important; }
-    .print-preview-modal { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
-    .print-preview-content { max-width: none !important; max-height: none !important; box-shadow: none !important; }
+    body * { visibility: hidden; }
+    .print-preview-modal, .print-preview-modal * { visibility: visible; }
+    .print-preview-toolbar { display: none !important; }
+    .print-preview-modal { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; background: white !important; padding: 0 !important; margin: 0 !important; }
+    .print-preview-content { max-width: none !important; max-height: none !important; box-shadow: none !important; margin: 0 !important; }
     .print-preview-body { padding: 20px !important; }
+    .print-table { width: 100% !important; }
   }
 `;
 
