@@ -1898,9 +1898,24 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
     stock_dimensions: {}
   });
 
+  // Update part number when type changes
+  const handleTypeChange = (newType) => {
+    setFormData({
+      ...formData,
+      type: newType,
+      part_number: newType === 'purchased' ? '' : nextPartNumber,
+      supplier_id: '',
+      stock_material_id: ''
+    });
+  };
+
   const handleSubmit = () => {
     if (!formData.description) {
       alert('Please fill in part description');
+      return;
+    }
+    if (!formData.part_number) {
+      alert('Please enter a part number');
       return;
     }
     if (formData.type === 'purchased' && !formData.supplier_id) {
@@ -1926,12 +1941,36 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
           <button className="modal-close" onClick={onClose}><Icons.X /></button>
         </div>
         <div className="modal-body">
-          {/* Auto-generated Part Number Display */}
-          <div style={{ background: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: 8, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Part Number:</span>
-            <span className="project-number" style={{ fontSize: 16, fontFamily: 'monospace' }}>{nextPartNumber}</span>
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>(auto-generated)</span>
+          {/* Part Type Selection - moved to top */}
+          <div className="form-group">
+            <label className="form-label">Part Type *</label>
+            <select className="form-select" value={formData.type} onChange={e => handleTypeChange(e.target.value)}>
+              <option value="manufactured">Manufactured</option>
+              <option value="purchased">Purchased</option>
+              <option value="assembly">Assembly</option>
+            </select>
           </div>
+
+          {/* Part Number - auto-generated or manual based on type */}
+          {formData.type === 'purchased' ? (
+            <div className="form-group">
+              <label className="form-label">Part Number (Supplier SKU) *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter supplier's SKU/part number"
+                value={formData.part_number}
+                onChange={e => setFormData({ ...formData, part_number: e.target.value })}
+                style={{ fontFamily: 'monospace' }}
+              />
+            </div>
+          ) : (
+            <div style={{ background: 'var(--bg-tertiary)', padding: '12px 16px', borderRadius: 8, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: 'var(--text-muted)' }}>Part Number:</span>
+              <span className="project-number" style={{ fontSize: 16, fontFamily: 'monospace' }}>{formData.part_number}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>(auto-generated)</span>
+            </div>
+          )}
 
           {/* Basic Part Info */}
           <div className="form-group">
@@ -1943,31 +1982,15 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
             <input type="text" className="form-input" placeholder="EA" value={formData.uom} onChange={e => setFormData({ ...formData, uom: e.target.value })} />
           </div>
 
-          {/* Part Type Selection */}
-          <div className="form-group">
-            <label className="form-label">Part Type *</label>
-            <select className="form-select" value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value, supplier_id: '', stock_material_id: '' })}>
-              <option value="manufactured">Manufactured</option>
-              <option value="purchased">Purchased</option>
-              <option value="assembly">Assembly</option>
-            </select>
-          </div>
-
           {/* Purchased Part Fields */}
           {formData.type === 'purchased' && (
-            <>
-              <div className="form-group">
-                <label className="form-label">Supplier *</label>
-                <select className="form-select" value={formData.supplier_id} onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}>
-                  <option value="">Select supplier...</option>
-                  {suppliers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Supplier Part Code</label>
-                <input type="text" className="form-input" placeholder="Supplier's part number" value={formData.supplier_code} onChange={e => setFormData({ ...formData, supplier_code: e.target.value })} />
-              </div>
-            </>
+            <div className="form-group">
+              <label className="form-label">Supplier *</label>
+              <select className="form-select" value={formData.supplier_id} onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}>
+                <option value="">Select supplier...</option>
+                {suppliers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
+            </div>
           )}
 
           {/* Manufactured Part Fields */}
