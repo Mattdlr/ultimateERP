@@ -2807,6 +2807,8 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
   const [newOperation, setNewOperation] = useState({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
   const [editingOperationId, setEditingOperationId] = useState(null);
   const [editingOperationData, setEditingOperationData] = useState({});
+  const [editingBomId, setEditingBomId] = useState(null);
+  const [editingBomData, setEditingBomData] = useState({});
 
   const supplier = suppliers.find(s => s.id === part.supplier_id);
   const material = materials.find(m => m.id === part.stock_material_id);
@@ -2929,6 +2931,25 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
     setEditingOperationData({});
   };
 
+  const startEditBom = (bomItem) => {
+    setEditingBomId(bomItem.id);
+    setEditingBomData({
+      quantity: bomItem.quantity,
+      position: bomItem.position
+    });
+  };
+
+  const saveEditBom = () => {
+    onUpdateBomItem(editingBomId, editingBomData);
+    setEditingBomId(null);
+    setEditingBomData({});
+  };
+
+  const cancelEditBom = () => {
+    setEditingBomId(null);
+    setEditingBomData({});
+  };
+
   const handleStatusToggle = () => {
     const newStatus = part.status === 'active' ? 'obsolete' : 'active';
     onUpdatePart(part.id, { status: newStatus });
@@ -3002,15 +3023,31 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
             <h2 style={{ fontSize: 22, marginBottom: 4 }}>{part.description}</h2>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)', color: 'white' }}>
-              🔄 Increment Revision
-            </button>
-            <button className="btn btn-secondary" onClick={handleStatusToggle}>
-              {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
-            </button>
-            <button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this part?')) onDeletePart(part.id); }} style={{ color: '#ef4444' }}>
-              <Icons.Trash />
-            </button>
+            {isEditing ? (
+              <>
+                <button className="btn btn-primary" onClick={saveEdit}>
+                  <Icons.Check /> Save Changes
+                </button>
+                <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn btn-secondary" onClick={startEdit}>
+                  <Icons.Pencil /> Edit
+                </button>
+                <button className="btn btn-secondary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)', color: 'white' }}>
+                  🔄 Increment Revision
+                </button>
+                <button className="btn btn-secondary" onClick={handleStatusToggle}>
+                  {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
+                </button>
+                <button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this part?')) onDeletePart(part.id); }} style={{ color: '#ef4444' }}>
+                  <Icons.Trash />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -3214,17 +3251,6 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                   </div>
                 )}
               </div>
-              {isEditing && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save Changes</button>
-                  <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
-                </div>
-              )}
-              {!isEditing && (
-                <button className="btn btn-secondary" onClick={startEdit} style={{ marginTop: 16 }}>
-                  <Icons.Pencil /> Edit Details
-                </button>
-              )}
             </div>
           </div>
         )}
@@ -3233,15 +3259,8 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
         {activeTab === 'stock' && part.type === 'manufactured' && (
           <div>
             <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Icons.Package /> Stock Material Information
-                </div>
-                {!isEditing && (
-                  <button className="btn btn-secondary btn-sm" onClick={startEdit}>
-                    <Icons.Pencil /> Edit
-                  </button>
-                )}
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Package /> Stock Material Information
               </div>
               <div className="info-grid">
                 <div className="info-card">
@@ -3328,12 +3347,6 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                     </div>
                   )}
                 </>
-              )}
-              {isEditing && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
-                  <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save Changes</button>
-                  <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
-                </div>
               )}
             </div>
           </div>
@@ -3623,12 +3636,13 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                 <div className="table-container">
                   <table className="table">
                     <thead>
-                      <tr><th>Part Number</th><th>Description</th><th>Type</th><th>Qty</th><th>Unit Weight</th><th>Total Weight</th><th>Position</th><th></th></tr>
+                      <tr><th>Part Number</th><th>Description</th><th>Type</th><th>Supplier</th><th>Qty</th><th>Unit Weight</th><th>Total Weight</th><th>Position</th><th></th></tr>
                     </thead>
                     <tbody>
                       {bomItems.map(bomItem => {
                         const childPart = getChildPart(bomItem.child_id);
                         if (!childPart) return null;
+                        const childSupplier = childPart.type === 'purchased' ? suppliers.find(s => s.id === childPart.supplier_id) : null;
                         let unitWeight = parseFloat(childPart.finished_weight) || 0;
                         if (!unitWeight && childPart.type === 'manufactured' && childPart.stock_dimensions) {
                           const childMaterial = materials.find(m => m.id === childPart.stock_material_id);
@@ -3641,19 +3655,67 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                           }
                         }
                         const totalWeight = unitWeight * bomItem.quantity;
-                        return (
+                        const isEditingThis = editingBomId === bomItem.id;
+
+                        return isEditingThis ? (
+                          <tr key={bomItem.id} style={{ background: 'var(--bg-secondary)' }}>
+                            <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{childPart.part_number}</strong></td>
+                            <td>{childPart.description}</td>
+                            <td><span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{childPart.type}</span></td>
+                            <td>{childSupplier ? childSupplier.name : '-'}</td>
+                            <td>
+                              <input
+                                type="number"
+                                className="form-input"
+                                min="1"
+                                step="0.01"
+                                value={editingBomData.quantity}
+                                onChange={e => setEditingBomData({ ...editingBomData, quantity: parseFloat(e.target.value) || 1 })}
+                                style={{ padding: '6px 10px', fontSize: '13px', width: '80px' }}
+                              />
+                            </td>
+                            <td>{unitWeight > 0 ? `${unitWeight.toFixed(3)} kg` : '-'}</td>
+                            <td style={{ fontWeight: 600 }}>{unitWeight > 0 ? `${(unitWeight * editingBomData.quantity).toFixed(3)} kg` : '-'}</td>
+                            <td>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="Optional"
+                                value={editingBomData.position || ''}
+                                onChange={e => setEditingBomData({ ...editingBomData, position: e.target.value })}
+                                style={{ padding: '6px 10px', fontSize: '13px', width: '100px' }}
+                              />
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn btn-ghost" onClick={saveEditBom} style={{ color: 'var(--accent-green)' }}>
+                                  <Icons.Check />
+                                </button>
+                                <button className="btn btn-ghost" onClick={cancelEditBom}>
+                                  <Icons.X />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
                           <tr key={bomItem.id}>
                             <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{childPart.part_number}</strong></td>
                             <td>{childPart.description}</td>
                             <td><span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{childPart.type}</span></td>
+                            <td>{childSupplier ? childSupplier.name : '-'}</td>
                             <td>{bomItem.quantity}</td>
                             <td>{unitWeight > 0 ? `${unitWeight.toFixed(3)} kg` : '-'}</td>
                             <td style={{ fontWeight: 600 }}>{totalWeight > 0 ? `${totalWeight.toFixed(3)} kg` : '-'}</td>
                             <td>{bomItem.position || '-'}</td>
                             <td>
-                              <button className="btn btn-ghost" onClick={() => { if (confirm('Remove this component from BOM?')) onRemoveBomItem(bomItem.id); }} style={{ color: '#ef4444' }}>
-                                <Icons.Trash />
-                              </button>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button className="btn btn-ghost" onClick={() => startEditBom(bomItem)}>
+                                  <Icons.Pencil />
+                                </button>
+                                <button className="btn btn-ghost" onClick={() => { if (confirm('Remove this component from BOM?')) onRemoveBomItem(bomItem.id); }} style={{ color: '#ef4444' }}>
+                                  <Icons.Trash />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
