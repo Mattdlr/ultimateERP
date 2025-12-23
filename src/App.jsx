@@ -433,6 +433,10 @@ function MainApp({ user, onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [checkinItems, setCheckinItems] = useState([]);
 
+  // Delivery notes state
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+  const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -453,6 +457,8 @@ function MainApp({ user, onLogout }) {
       const { data: operationsData } = await supabase.from('operations').select('*');
       const { data: checkinsData } = await supabase.from('project_checkins').select('*').order('checkin_date', { ascending: false });
       const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
+      const { data: deliveryNotesData } = await supabase.from('delivery_notes').select('*').order('delivery_date', { ascending: false });
+      const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -464,6 +470,8 @@ function MainApp({ user, onLogout }) {
       setOperations(operationsData || []);
       setCheckins(checkinsData || []);
       setCheckinItems(checkinItemsData || []);
+      setDeliveryNotes(deliveryNotesData || []);
+      setDeliveryNoteItems(deliveryNoteItemsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -929,6 +937,62 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // DELIVERY NOTES HANDLERS
+  // ============================================
+  const handleAddDeliveryNote = async (deliveryNoteData) => {
+    try {
+      // Create the delivery note
+      const { data: deliveryNote, error: noteError } = await supabase
+        .from('delivery_notes')
+        .insert({
+          project_id: deliveryNoteData.project_id,
+          delivery_date: deliveryNoteData.delivery_date,
+          notes: deliveryNoteData.notes,
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (noteError) throw noteError;
+
+      // Create the delivery note items
+      const itemsToInsert = deliveryNoteData.items.map(item => ({
+        delivery_note_id: deliveryNote.id,
+        description: item.description,
+        quantity: item.quantity,
+        part_id: item.part_id || null
+      }));
+
+      const { data: items, error: itemsError } = await supabase
+        .from('delivery_note_items')
+        .insert(itemsToInsert)
+        .select();
+
+      if (itemsError) throw itemsError;
+
+      setDeliveryNotes([deliveryNote, ...deliveryNotes]);
+      setDeliveryNoteItems([...deliveryNoteItems, ...items]);
+      showToast('Delivery note created successfully');
+    } catch (err) {
+      console.error('Error adding delivery note:', err);
+      showToast('Error adding delivery note', 'error');
+    }
+  };
+
+  const handleDeleteDeliveryNote = async (deliveryNoteId) => {
+    try {
+      const { error } = await supabase.from('delivery_notes').update({ deleted_at: new Date().toISOString() }).eq('id', deliveryNoteId);
+      if (error) throw error;
+      setDeliveryNotes(deliveryNotes.filter(dn => dn.id !== deliveryNoteId));
+      setDeliveryNoteItems(deliveryNoteItems.filter(item => item.delivery_note_id !== deliveryNoteId));
+      showToast('Delivery note deleted');
+    } catch (err) {
+      console.error('Error deleting delivery note:', err);
+      showToast('Error deleting delivery note', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -986,7 +1050,7 @@ function MainApp({ user, onLogout }) {
           </nav>
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
-            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} />)}
+            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} deliveryNotes={deliveryNotes} deliveryNoteItems={deliveryNoteItems} parts={parts} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} onAddDeliveryNote={handleAddDeliveryNote} onDeleteDeliveryNote={handleDeleteDeliveryNote} />)}
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
@@ -1419,10 +1483,13 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
 // ============================================
 // PROJECT DETAIL VIEW
 // ============================================
-function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin }) {
+function ProjectDetailView({ project, customer, checkins, checkinItems, deliveryNotes, deliveryNoteItems, parts, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin, onAddDeliveryNote, onDeleteDeliveryNote }) {
   const [showAddCheckinModal, setShowAddCheckinModal] = useState(false);
   const [expandedCheckins, setExpandedCheckins] = useState([]);
   const [showLabelPreview, setShowLabelPreview] = useState(false);
+  const [showAddDeliveryNoteModal, setShowAddDeliveryNoteModal] = useState(false);
+  const [expandedDeliveryNotes, setExpandedDeliveryNotes] = useState([]);
+  const [printingDeliveryNote, setPrintingDeliveryNote] = useState(null);
 
   // Get check-ins for this project
   const projectCheckins = checkins.filter(c => c.project_id === project.id);
@@ -1438,6 +1505,22 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
       setExpandedCheckins([...expandedCheckins, checkinId]);
     }
   };
+
+  // Get delivery notes for this project
+  const projectDeliveryNotes = deliveryNotes.filter(dn => dn.project_id === project.id);
+
+  // Get items for a specific delivery note
+  const getDeliveryNoteItems = (deliveryNoteId) => deliveryNoteItems.filter(item => item.delivery_note_id === deliveryNoteId);
+
+  // Toggle delivery note expansion
+  const toggleDeliveryNote = (deliveryNoteId) => {
+    if (expandedDeliveryNotes.includes(deliveryNoteId)) {
+      setExpandedDeliveryNotes(expandedDeliveryNotes.filter(id => id !== deliveryNoteId));
+    } else {
+      setExpandedDeliveryNotes([...expandedDeliveryNotes, deliveryNoteId]);
+    }
+  };
+
   const [newNote, setNewNote] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -1585,6 +1668,96 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
             </div>
           )}
         </div>
+
+        {/* Delivery Notes Section */}
+        <div className="card" style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Delivery Notes
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Track parts delivered to customer
+              </div>
+            </div>
+            <button className="btn btn-primary" onClick={() => setShowAddDeliveryNoteModal(true)}>
+              <Icons.Plus /> New Delivery Note
+            </button>
+          </div>
+
+          {projectDeliveryNotes.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {projectDeliveryNotes.map(deliveryNote => {
+                const items = getDeliveryNoteItems(deliveryNote.id);
+                const isExpanded = expandedDeliveryNotes.includes(deliveryNote.id);
+                return (
+                  <div key={deliveryNote.id} className="card" style={{ background: 'var(--bg-tertiary)', padding: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>{formatDate(deliveryNote.delivery_date)}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {items.length} item{items.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        {deliveryNote.notes && (
+                          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                            {deliveryNote.notes}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => toggleDeliveryNote(deliveryNote.id)}
+                          style={{ padding: '4px 8px' }}
+                        >
+                          {isExpanded ? '▼ Hide' : '▶ Show'} Items
+                        </button>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => setPrintingDeliveryNote(deliveryNote)}
+                          style={{ padding: '4px 8px' }}
+                        >
+                          <Icons.Printer /> Print
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => { if (confirm('Delete this delivery note?')) onDeleteDeliveryNote(deliveryNote.id); }}
+                          style={{ color: '#ef4444', padding: '4px 8px' }}
+                        >
+                          <Icons.Trash />
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded && items.length > 0 && (
+                      <div className="table-container" style={{ marginTop: 12 }}>
+                        <table className="table">
+                          <thead>
+                            <tr><th>Description</th><th>Quantity</th></tr>
+                          </thead>
+                          <tbody>
+                            {items.map(item => (
+                              <tr key={item.id}>
+                                <td>{item.description}</td>
+                                <td style={{ fontWeight: 600 }}>{item.quantity}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+              No delivery notes yet. Click "New Delivery Note" to create one.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add Check-in Modal */}
@@ -1593,6 +1766,20 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
           projectId={project.id}
           onClose={() => setShowAddCheckinModal(false)}
           onSave={onAddCheckin}
+        />
+      )}
+
+      {/* Add Delivery Note Modal */}
+      {showAddDeliveryNoteModal && (
+        <AddDeliveryNoteModal
+          projectId={project.id}
+          parts={parts}
+          checkinItems={checkinItems.filter(item => {
+            const checkin = checkins.find(c => c.id === item.checkin_id);
+            return checkin && checkin.project_id === project.id;
+          })}
+          onClose={() => setShowAddDeliveryNoteModal(false)}
+          onSave={onAddDeliveryNote}
         />
       )}
 
@@ -1612,6 +1799,86 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, onBack, 
                 <div className="label-project-number">#{project.project_number}</div>
                 <div className="label-customer">{customer?.name || 'Unknown Customer'}</div>
                 <div className="label-description">{project.title}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Note Print Preview */}
+      {printingDeliveryNote && (
+        <div className="print-preview-modal" onClick={() => setPrintingDeliveryNote(null)}>
+          <div className="print-preview-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 800 }}>
+            <div className="print-preview-toolbar">
+              <h3>Print Delivery Note</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary" onClick={() => window.print()}><Icons.Printer /> Print</button>
+                <button className="btn btn-secondary" onClick={() => setPrintingDeliveryNote(null)}>Close</button>
+              </div>
+            </div>
+            <div className="label-preview-body">
+              <div style={{ background: 'white', color: 'black', padding: 40, minHeight: 400 }}>
+                <div style={{ borderBottom: '2px solid #000', paddingBottom: 16, marginBottom: 24 }}>
+                  <h1 style={{ fontSize: 28, fontWeight: 'bold', margin: 0, marginBottom: 8 }}>DELIVERY NOTE</h1>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>PROJECT</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>#{project.project_number}</div>
+                      <div style={{ fontSize: 14, marginTop: 4 }}>{project.title}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>CUSTOMER</div>
+                      <div style={{ fontSize: 16, fontWeight: 600 }}>{customer?.name || 'Unknown Customer'}</div>
+                      {customer?.contact && <div style={{ fontSize: 14, marginTop: 4 }}>{customer.contact}</div>}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>DELIVERY DATE</div>
+                    <div style={{ fontSize: 16, fontWeight: 600 }}>{formatDate(printingDeliveryNote.delivery_date)}</div>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 24 }}>
+                  <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, textTransform: 'uppercase' }}>Items</h2>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #000' }}>
+                        <th style={{ textAlign: 'left', padding: '8px 0', fontSize: 12, fontWeight: 600 }}>DESCRIPTION</th>
+                        <th style={{ textAlign: 'right', padding: '8px 0', fontSize: 12, fontWeight: 600, width: 100 }}>QUANTITY</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getDeliveryNoteItems(printingDeliveryNote.id).map((item, idx) => (
+                        <tr key={item.id} style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '12px 0', fontSize: 14 }}>{item.description}</td>
+                          <td style={{ padding: '12px 0', fontSize: 14, textAlign: 'right', fontWeight: 600 }}>{item.quantity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {printingDeliveryNote.notes && (
+                  <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #ddd' }}>
+                    <div style={{ fontSize: 12, color: '#666', marginBottom: 4 }}>NOTES</div>
+                    <div style={{ fontSize: 14, whiteSpace: 'pre-wrap' }}>{printingDeliveryNote.notes}</div>
+                  </div>
+                )}
+
+                <div style={{ marginTop: 40, paddingTop: 24, borderTop: '2px solid #000' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>RECEIVED BY</div>
+                      <div style={{ borderBottom: '1px solid #000', height: 40 }}></div>
+                      <div style={{ fontSize: 11, color: '#666', marginTop: 8 }}>Signature</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: '#666', marginBottom: 16 }}>DATE RECEIVED</div>
+                      <div style={{ borderBottom: '1px solid #000', height: 40 }}></div>
+                      <div style={{ fontSize: 11, color: '#666', marginTop: 8 }}>Date</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1738,6 +2005,212 @@ function AddCheckinModal({ projectId, onClose, onSave }) {
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSubmit}>
             <Icons.Check /> Save Check-in
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// ADD DELIVERY NOTE MODAL
+// ============================================
+function AddDeliveryNoteModal({ projectId, parts, checkinItems, onClose, onSave }) {
+  const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState([{ description: '', quantity: 1, part_id: null, source: 'custom' }]);
+
+  const addItem = () => {
+    setItems([...items, { description: '', quantity: 1, part_id: null, source: 'custom' }]);
+  };
+
+  const removeItem = (index) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const updateItem = (index, field, value) => {
+    const newItems = [...items];
+    newItems[index][field] = value;
+
+    // If selecting a part or checkin item, auto-fill the description
+    if (field === 'source') {
+      if (value === 'custom') {
+        newItems[index].description = '';
+        newItems[index].part_id = null;
+      }
+    } else if (field === 'part_id') {
+      if (value) {
+        const selectedPart = parts.find(p => p.id === value);
+        if (selectedPart) {
+          newItems[index].description = `${selectedPart.part_number} - ${selectedPart.name}`;
+        }
+      }
+    } else if (field === 'checkin_item_id') {
+      if (value) {
+        const selectedItem = checkinItems.find(ci => ci.id === value);
+        if (selectedItem) {
+          newItems[index].description = selectedItem.description;
+          newItems[index].quantity = selectedItem.quantity;
+        }
+      }
+    }
+
+    setItems(newItems);
+  };
+
+  const handleSubmit = () => {
+    // Validate
+    const validItems = items.filter(item => item.description.trim());
+    if (validItems.length === 0) {
+      alert('Please add at least one item with a description');
+      return;
+    }
+
+    onSave({
+      project_id: projectId,
+      delivery_date: deliveryDate,
+      notes: notes.trim(),
+      items: validItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        part_id: item.part_id
+      }))
+    });
+
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
+        <div className="modal-header">
+          <h2 className="modal-title"><Icons.FileText /> New Delivery Note</h2>
+          <button className="modal-close" onClick={onClose}><Icons.X /></button>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label className="form-label">Delivery Date *</label>
+            <input
+              type="date"
+              className="form-input"
+              value={deliveryDate}
+              onChange={e => setDeliveryDate(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <textarea
+              className="form-textarea"
+              rows="2"
+              placeholder="Optional notes about this delivery..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <label className="form-label" style={{ margin: 0 }}>Items *</label>
+              <button className="btn btn-sm btn-secondary" onClick={addItem}>
+                <Icons.Plus /> Add Item
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {items.map((item, index) => (
+                <div key={index} className="card" style={{ padding: 12, background: 'var(--bg-tertiary)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: 12 }}>Source</label>
+                      <select
+                        className="form-input"
+                        value={item.source}
+                        onChange={e => updateItem(index, 'source', e.target.value)}
+                      >
+                        <option value="custom">Custom Entry</option>
+                        <option value="part">From Parts List</option>
+                        <option value="checkin">From Check-in Items</option>
+                      </select>
+                    </div>
+
+                    {item.source === 'part' && (
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: 12 }}>Select Part</label>
+                        <select
+                          className="form-input"
+                          value={item.part_id || ''}
+                          onChange={e => updateItem(index, 'part_id', e.target.value || null)}
+                        >
+                          <option value="">-- Select a part --</option>
+                          {parts.map(part => (
+                            <option key={part.id} value={part.id}>
+                              {part.part_number} - {part.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {item.source === 'checkin' && (
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: 12 }}>Select Check-in Item</label>
+                        <select
+                          className="form-input"
+                          onChange={e => updateItem(index, 'checkin_item_id', e.target.value || null)}
+                        >
+                          <option value="">-- Select an item --</option>
+                          {checkinItems.map(ci => (
+                            <option key={ci.id} value={ci.id}>
+                              {ci.description} (Qty: {ci.quantity})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end' }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: 12 }}>Description</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="Item description"
+                          value={item.description}
+                          onChange={e => updateItem(index, 'description', e.target.value)}
+                          disabled={item.source === 'part' && !item.part_id}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: 12 }}>Quantity</label>
+                        <input
+                          type="number"
+                          className="form-input"
+                          min="1"
+                          step="0.01"
+                          value={item.quantity}
+                          onChange={e => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                        />
+                      </div>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => removeItem(index)}
+                        disabled={items.length === 1}
+                        style={{ opacity: items.length === 1 ? 0.3 : 1 }}
+                      >
+                        <Icons.Trash />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit}>
+            <Icons.Check /> Save Delivery Note
           </button>
         </div>
       </div>
