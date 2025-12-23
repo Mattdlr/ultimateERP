@@ -2766,6 +2766,7 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
 // PART DETAIL VIEW
 // ============================================
 function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
+  const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [showAddBomItem, setShowAddBomItem] = useState(false);
@@ -2784,6 +2785,38 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
 
   // Get child part details
   const getChildPart = (childId) => parts.find(p => p.id === childId);
+
+  // Get parent assemblies (where this part is used)
+  const parentAssemblies = bomRelations
+    .filter(b => b.child_id === part.id)
+    .map(b => {
+      const parentPart = parts.find(p => p.id === b.parent_id);
+      return parentPart ? { ...b, parent: parentPart } : null;
+    })
+    .filter(Boolean);
+
+  // Get all stock materials from BOM (for assemblies)
+  const getBomStockMaterials = () => {
+    const stockMaterials = [];
+    bomItems.forEach(bomItem => {
+      const childPart = getChildPart(bomItem.child_id);
+      if (childPart && childPart.type === 'manufactured' && childPart.stock_material_id) {
+        const childMaterial = materials.find(m => m.id === childPart.stock_material_id);
+        if (childMaterial) {
+          const existing = stockMaterials.find(sm => sm.material.id === childMaterial.id);
+          if (existing) {
+            existing.parts.push({ part: childPart, quantity: bomItem.quantity, bomItem });
+          } else {
+            stockMaterials.push({
+              material: childMaterial,
+              parts: [{ part: childPart, quantity: bomItem.quantity, bomItem }]
+            });
+          }
+        }
+      }
+    });
+    return stockMaterials;
+  };
 
   // Calculate total weight for assembly
   const calculateAssemblyWeight = () => {
@@ -2853,10 +2886,32 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
     return labels[type] || type;
   };
 
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Define available tabs based on part type
+  const tabs = [
+    { id: 'details', label: 'Details', icon: Icons.FileText },
+    { id: 'stock', label: 'Stock Material', icon: Icons.Package, show: part.type === 'manufactured' || part.type === 'assembly' },
+    { id: 'operations', label: 'Machining Operations', icon: Icons.Settings, show: part.type === 'manufactured' },
+    { id: 'bom', label: 'Bill of Materials', icon: Icons.Layers, show: part.type === 'assembly' },
+    { id: 'whereused', label: 'Where Used', icon: Icons.Search },
+    { id: 'revisions', label: 'Revision History', icon: Icons.FileText }
+  ].filter(tab => tab.show !== false);
+
   return (
     <>
       <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 16 }}>← Back to Parts</button>
       <div className="detail-panel">
+        {/* Header */}
         <div className="detail-header">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -2882,161 +2937,440 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                 color: part.status === 'active' ? 'var(--accent-green)' : '#fbbf24'
               }}>{part.status}</span>
             </div>
-            {isEditing ? (
-              <input type="text" className="form-input" value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }} />
-            ) : (
-              <h2 style={{ fontSize: 22, marginBottom: 4 }}>{part.description}</h2>
-            )}
+            <h2 style={{ fontSize: 22, marginBottom: 4 }}>{part.description}</h2>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {isEditing ? (
-              <>
-                <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button>
-                <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
-              </>
-            ) : (
-              <>
-                <button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button>
-                <button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this part?')) onDeletePart(part.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button>
-              </>
-            )}
+            <button className="btn btn-secondary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)', color: 'white' }}>
+              🔄 Increment Revision
+            </button>
+            <button className="btn btn-secondary" onClick={handleStatusToggle}>
+              {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
+            </button>
+            <button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this part?')) onDeletePart(part.id); }} style={{ color: '#ef4444' }}>
+              <Icons.Trash />
+            </button>
           </div>
         </div>
 
-        <div className="info-grid">
-          <div className="info-card"><div className="info-label">UOM</div><div className="info-value">{part.uom || 'EA'}</div></div>
-          <div className="info-card">
-            <div className="info-label">Finished Weight</div>
-            {isEditing ? (
-              <input type="number" className="form-input" step="0.001" value={editData.finished_weight || ''} onChange={e => setEditData({ ...editData, finished_weight: e.target.value })} />
-            ) : (
-              <div className="info-value">{part.finished_weight ? `${parseFloat(part.finished_weight).toFixed(3)} kg` : '-'}</div>
-            )}
+        {/* Tabs Navigation */}
+        <div style={{ borderBottom: '2px solid var(--border-color)', marginTop: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
+            {tabs.map(tab => {
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '12px 20px',
+                    border: 'none',
+                    background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'transparent',
+                    color: activeTab === tab.id ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                    marginBottom: '-2px',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: activeTab === tab.id ? 600 : 400,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <TabIcon style={{ width: 16, height: 16 }} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
+        </div>
 
-          {part.type === 'purchased' && (
-            <>
-              <div className="info-card"><div className="info-label">Supplier</div><div className="info-value">{supplier?.name || '-'}</div></div>
+        {/* Tab Content */}
+        {activeTab === 'details' && (
+          <div>
+            {/* Details Tab Content */}
+            <div className="info-grid">
               <div className="info-card">
-                <div className="info-label">Supplier Code</div>
+                <div className="info-label">Part Number</div>
+                <div className="info-value" style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{part.part_number}</div>
+              </div>
+              <div className="info-card">
+                <div className="info-label">UOM</div>
+                <div className="info-value">{part.uom || 'EA'}</div>
+              </div>
+              <div className="info-card">
+                <div className="info-label">Status</div>
+                <div className="info-value">{part.status}</div>
+              </div>
+              <div className="info-card">
+                <div className="info-label">Type</div>
+                <div className="info-value">{getPartTypeLabel(part.type)}</div>
+              </div>
+            </div>
+
+            <div className="info-grid" style={{ marginTop: 16 }}>
+              <div className="info-card">
+                <div className="info-label">Created</div>
+                <div className="info-value">{formatDate(part.created_at)}</div>
+              </div>
+              <div className="info-card">
+                <div className="info-label">Last Updated</div>
+                <div className="info-value">{formatDate(part.updated_at)}</div>
+              </div>
+              <div className="info-card">
+                <div className="info-label">Finished Weight</div>
                 {isEditing ? (
-                  <input type="text" className="form-input" value={editData.supplier_code || ''} onChange={e => setEditData({ ...editData, supplier_code: e.target.value })} />
+                  <input type="number" className="form-input" step="0.001" value={editData.finished_weight || ''} onChange={e => setEditData({ ...editData, finished_weight: e.target.value })} />
                 ) : (
-                  <div className="info-value">{part.supplier_code || '-'}</div>
+                  <div className="info-value">{part.finished_weight ? `${parseFloat(part.finished_weight).toFixed(3)} kg` : '-'}</div>
                 )}
               </div>
-            </>
-          )}
-
-          {part.type === 'manufactured' && (
-            <>
-              <div className="info-card"><div className="info-label">Stock Material</div><div className="info-value">{material?.name || '-'}</div></div>
-              <div className="info-card"><div className="info-label">Stock Form</div><div className="info-value">{part.stock_form ? part.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}</div></div>
-            </>
-          )}
-        </div>
-
-        {/* Stock Dimensions and Weight for Manufactured Parts */}
-        {part.type === 'manufactured' && part.stock_dimensions && Object.keys(part.stock_dimensions).length > 0 && (
-          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icons.Package /> Stock Information
-            </div>
-            <div className="info-grid">
-              {StockCalculations.getDimensionFields(part.stock_form).map(field => (
-                part.stock_dimensions[field.name] && (
-                  <div key={field.name} className="info-card">
-                    <div className="info-label">{field.label}</div>
-                    <div className="info-value">{part.stock_dimensions[field.name]} mm</div>
-                  </div>
-                )
-              ))}
-              <div className="info-card" style={{ background: 'rgba(255,107,53,0.1)', borderLeft: '3px solid var(--accent-orange)' }}>
-                <div className="info-label">Stock Weight</div>
-                <div className="info-value" style={{ color: 'var(--accent-orange)', fontSize: 20 }}>
-                  {StockCalculations.calculateWeight(
-                    part.stock_form,
-                    part.stock_dimensions,
-                    material?.density || 0
-                  ).toFixed(3)} kg
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <button className={`btn ${part.status === 'active' ? 'btn-secondary' : 'btn-primary'}`} onClick={handleStatusToggle}>
-            {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
-          </button>
-          <button className="btn btn-primary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)' }}>
-            🔄 Increment Revision
-          </button>
-        </div>
-
-        {isEditing && (
-          <div className="notes-section" style={{ marginTop: 24 }}>
-            <div className="form-group">
-              <label className="form-label">Revision Notes</label>
-              <textarea className="form-textarea" rows="4" placeholder="Add revision notes..." value={editData.revision_notes || ''} onChange={e => setEditData({ ...editData, revision_notes: e.target.value })} />
-            </div>
-          </div>
-        )}
-
-        {!isEditing && part.revision_notes && (
-          <div className="notes-section" style={{ marginTop: 24 }}>
-            <div className="notes-header">
-              <div className="notes-title"><Icons.FileText /> Revision Notes</div>
-            </div>
-            <div style={{ padding: 16, color: 'var(--text-primary)' }}>{part.revision_notes}</div>
-          </div>
-        )}
-
-        {/* BOM Section for Assembly Parts */}
-        {part.type === 'assembly' && (
-          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.Layers /> Bill of Materials
-              </div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowAddBomItem(!showAddBomItem)}>
-                <Icons.Plus /> Add Component
-              </button>
-            </div>
-
-            {/* Add BOM Item Form */}
-            {showAddBomItem && (
-              <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
-                <div className="form-row">
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Child Part *</label>
-                    <select className="form-select" value={newBomItem.child_id} onChange={e => setNewBomItem({ ...newBomItem, child_id: e.target.value })}>
-                      <option value="">Select part...</option>
-                      {parts.filter(p => p.id !== part.id).map(p => (
-                        <option key={p.id} value={p.id}>{p.part_number} - {p.description}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Quantity *</label>
-                    <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: parseInt(e.target.value) || 1 })} />
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Position</label>
-                    <input type="text" className="form-input" placeholder="Optional" value={newBomItem.position} onChange={e => setNewBomItem({ ...newBomItem, position: e.target.value })} />
+              {part.type === 'assembly' && bomItems.length > 0 && (
+                <div className="info-card" style={{ background: 'rgba(52,211,153,0.1)', borderLeft: '3px solid var(--accent-green)' }}>
+                  <div className="info-label">Assembly Weight</div>
+                  <div className="info-value" style={{ color: 'var(--accent-green)', fontSize: 18, fontWeight: 600 }}>
+                    {calculateAssemblyWeight().toFixed(3)} kg
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button className="btn btn-primary" onClick={() => {
-                    if (!newBomItem.child_id) { alert('Please select a child part'); return; }
-                    onAddBomItem(part.id, newBomItem.child_id, newBomItem.quantity, newBomItem.position);
-                    setNewBomItem({ child_id: '', quantity: 1, position: '' });
-                    setShowAddBomItem(false);
-                  }}><Icons.Check /> Add</button>
-                  <button className="btn btn-secondary" onClick={() => { setShowAddBomItem(false); setNewBomItem({ child_id: '', quantity: 1, position: '' }); }}>Cancel</button>
+              )}
+            </div>
+
+            {part.type === 'purchased' && (
+              <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Package /> Supplier Information
+                </div>
+                <div className="info-grid">
+                  <div className="info-card">
+                    <div className="info-label">Supplier</div>
+                    <div className="info-value">{supplier?.name || '-'}</div>
+                  </div>
+                  <div className="info-card">
+                    <div className="info-label">Supplier Code</div>
+                    {isEditing ? (
+                      <input type="text" className="form-input" value={editData.supplier_code || ''} onChange={e => setEditData({ ...editData, supplier_code: e.target.value })} />
+                    ) : (
+                      <div className="info-value">{part.supplier_code || '-'}</div>
+                    )}
+                  </div>
+                  {supplier && (
+                    <>
+                      <div className="info-card">
+                        <div className="info-label">Lead Time</div>
+                        <div className="info-value">{supplier.lead_time || 0} days</div>
+                      </div>
+                      <div className="info-card">
+                        <div className="info-label">Contact</div>
+                        <div className="info-value">{supplier.contact || '-'}</div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
+
+            {/* Description and Revision Notes */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Description & Notes
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                {isEditing ? (
+                  <input type="text" className="form-input" value={editData.description} onChange={e => setEditData({ ...editData, description: e.target.value })} />
+                ) : (
+                  <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>{part.description}</div>
+                )}
+              </div>
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label">Revision Notes</label>
+                {isEditing ? (
+                  <textarea className="form-textarea" rows="4" placeholder="Add revision notes..." value={editData.revision_notes || ''} onChange={e => setEditData({ ...editData, revision_notes: e.target.value })} />
+                ) : (
+                  <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6, minHeight: 60, whiteSpace: 'pre-wrap' }}>
+                    {part.revision_notes || 'No revision notes'}
+                  </div>
+                )}
+              </div>
+              {isEditing && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save Changes</button>
+                  <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
+                </div>
+              )}
+              {!isEditing && (
+                <button className="btn btn-secondary" onClick={startEdit} style={{ marginTop: 16 }}>
+                  <Icons.Pencil /> Edit Details
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stock Material Tab */}
+        {activeTab === 'stock' && part.type === 'manufactured' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Package /> Stock Material Information
+              </div>
+              <div className="info-grid">
+                <div className="info-card">
+                  <div className="info-label">Material</div>
+                  <div className="info-value">{material?.name || '-'}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Stock Form</div>
+                  <div className="info-value">
+                    {part.stock_form ? part.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
+                  </div>
+                </div>
+                {material && (
+                  <div className="info-card">
+                    <div className="info-label">Density</div>
+                    <div className="info-value">{material.density} kg/m³</div>
+                  </div>
+                )}
+              </div>
+              {part.stock_dimensions && Object.keys(part.stock_dimensions).length > 0 && (
+                <>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginTop: 24, marginBottom: 12 }}>Dimensions</div>
+                  <div className="info-grid">
+                    {StockCalculations.getDimensionFields(part.stock_form).map(field => (
+                      part.stock_dimensions[field.name] && (
+                        <div key={field.name} className="info-card">
+                          <div className="info-label">{field.label}</div>
+                          <div className="info-value">{part.stock_dimensions[field.name]} mm</div>
+                        </div>
+                      )
+                    ))}
+                    <div className="info-card" style={{ background: 'rgba(255,107,53,0.1)', borderLeft: '3px solid var(--accent-orange)' }}>
+                      <div className="info-label">Stock Weight</div>
+                      <div className="info-value" style={{ color: 'var(--accent-orange)', fontSize: 20, fontWeight: 600 }}>
+                        {StockCalculations.calculateWeight(
+                          part.stock_form,
+                          part.stock_dimensions,
+                          material?.density || 0
+                        ).toFixed(3)} kg
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stock Material Tab for Assemblies */}
+        {activeTab === 'stock' && part.type === 'assembly' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Package /> Stock Materials from BOM
+              </div>
+              {getBomStockMaterials().length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {getBomStockMaterials().map(stockMat => (
+                    <div key={stockMat.material.id} className="card" style={{ background: 'var(--bg-secondary)', padding: 16 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--accent-orange)' }}>
+                        {stockMat.material.name}
+                      </div>
+                      <div className="table-container">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>Part</th>
+                              <th>Form</th>
+                              <th>Qty in Assy</th>
+                              <th>Unit Weight</th>
+                              <th>Total Weight</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {stockMat.parts.map(({ part: childPart, quantity, bomItem }) => {
+                              const childMaterial = materials.find(m => m.id === childPart.stock_material_id);
+                              const unitWeight = childPart.stock_dimensions ? StockCalculations.calculateWeight(
+                                childPart.stock_form,
+                                childPart.stock_dimensions,
+                                childMaterial?.density || 0
+                              ) : 0;
+                              return (
+                                <tr key={bomItem.id}>
+                                  <td>
+                                    <div>{childPart.part_number}</div>
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{childPart.description}</div>
+                                  </td>
+                                  <td>{childPart.stock_form?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || '-'}</td>
+                                  <td>{quantity}</td>
+                                  <td>{unitWeight > 0 ? `${unitWeight.toFixed(3)} kg` : '-'}</td>
+                                  <td style={{ fontWeight: 600 }}>{unitWeight > 0 ? `${(unitWeight * quantity).toFixed(3)} kg` : '-'}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No manufactured parts with stock materials in BOM
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Machining Operations Tab */}
+        {activeTab === 'operations' && part.type === 'manufactured' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Settings /> Manufacturing Routing
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowAddOperation(!showAddOperation)}>
+                  <Icons.Plus /> Add Operation
+                </button>
+              </div>
+
+              {/* Add Operation Form */}
+              {showAddOperation && (
+                <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  <div className="form-row">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Op Number *</label>
+                      <input type="text" className="form-input" placeholder="e.g., OP10" value={newOperation.op_number} onChange={e => setNewOperation({ ...newOperation, op_number: e.target.value })} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Machine</label>
+                      <select className="form-select" value={newOperation.machine_id} onChange={e => setNewOperation({ ...newOperation, machine_id: e.target.value })}>
+                        <option value="">Select machine...</option>
+                        {machines.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Program Name</label>
+                      <input type="text" className="form-input" placeholder="e.g., O1234" value={newOperation.program_name} onChange={e => setNewOperation({ ...newOperation, program_name: e.target.value })} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Cycle Time (min)</label>
+                      <input type="number" className="form-input" min="0" value={newOperation.cycle_time} onChange={e => setNewOperation({ ...newOperation, cycle_time: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label className="form-label">Description</label>
+                    <input type="text" className="form-input" placeholder="Operation description" value={newOperation.description} onChange={e => setNewOperation({ ...newOperation, description: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button className="btn btn-primary" onClick={() => {
+                      if (!newOperation.op_number) { alert('Please enter operation number'); return; }
+                      onAddOperation({ ...newOperation, part_id: part.id });
+                      setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
+                      setShowAddOperation(false);
+                    }}><Icons.Check /> Add</button>
+                    <button className="btn btn-secondary" onClick={() => { setShowAddOperation(false); setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 }); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Operations Table */}
+              {partOperations.length > 0 ? (
+                <>
+                  <div className="table-container">
+                    <table className="table">
+                      <thead>
+                        <tr><th>Op #</th><th>Machine</th><th>Program</th><th>Description</th><th>Cycle Time</th><th></th></tr>
+                      </thead>
+                      <tbody>
+                        {partOperations.map(op => (
+                          <tr key={op.id}>
+                            <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{op.op_number}</strong></td>
+                            <td>{getMachineName(op.machine_id)}</td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{op.program_name || '-'}</td>
+                            <td>{op.description || '-'}</td>
+                            <td>{op.cycle_time || 0} min</td>
+                            <td>
+                              <button className="btn btn-ghost" onClick={() => { if (confirm('Delete this operation?')) onDeleteOperation(op.id); }} style={{ color: '#ef4444' }}>
+                                <Icons.Trash />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ marginTop: 16, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Cycle Time</div>
+                        <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--accent-blue)' }}>
+                          {calculateTotalCycleTime()} min
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {partOperations.length} operation{partOperations.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No operations defined yet. Click "Add Operation" to start building the routing.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* BOM Tab for Assembly Parts */}
+        {activeTab === 'bom' && part.type === 'assembly' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Layers /> Bill of Materials
+                </div>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowAddBomItem(!showAddBomItem)}>
+                  <Icons.Plus /> Add Component
+                </button>
+              </div>
+
+              {/* Add BOM Item Form */}
+              {showAddBomItem && (
+                <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  <div className="form-row">
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Child Part *</label>
+                      <select className="form-select" value={newBomItem.child_id} onChange={e => setNewBomItem({ ...newBomItem, child_id: e.target.value })}>
+                        <option value="">Select part...</option>
+                        {parts.filter(p => p.id !== part.id).map(p => (
+                          <option key={p.id} value={p.id}>{p.part_number} - {p.description}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Quantity *</label>
+                      <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: parseInt(e.target.value) || 1 })} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Position</label>
+                      <input type="text" className="form-input" placeholder="Optional" value={newBomItem.position} onChange={e => setNewBomItem({ ...newBomItem, position: e.target.value })} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button className="btn btn-primary" onClick={() => {
+                      if (!newBomItem.child_id) { alert('Please select a child part'); return; }
+                      onAddBomItem(part.id, newBomItem.child_id, newBomItem.quantity, newBomItem.position);
+                      setNewBomItem({ child_id: '', quantity: 1, position: '' });
+                      setShowAddBomItem(false);
+                    }}><Icons.Check /> Add</button>
+                    <button className="btn btn-secondary" onClick={() => { setShowAddBomItem(false); setNewBomItem({ child_id: '', quantity: 1, position: '' }); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
 
             {/* BOM Items Table */}
             {bomItems.length > 0 ? (
@@ -3104,103 +3438,89 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
           </div>
         )}
 
-        {/* Operations Section for Manufactured Parts */}
-        {part.type === 'manufactured' && (
-          <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.Settings /> Manufacturing Routing
+        {/* Where Used Tab */}
+        {activeTab === 'whereused' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.Search /> Where This Part is Used
               </div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowAddOperation(!showAddOperation)}>
-                <Icons.Plus /> Add Operation
-              </button>
-            </div>
-
-            {/* Add Operation Form */}
-            {showAddOperation && (
-              <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
-                <div className="form-row">
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Op Number *</label>
-                    <input type="text" className="form-input" placeholder="e.g., OP10" value={newOperation.op_number} onChange={e => setNewOperation({ ...newOperation, op_number: e.target.value })} />
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Machine</label>
-                    <select className="form-select" value={newOperation.machine_id} onChange={e => setNewOperation({ ...newOperation, machine_id: e.target.value })}>
-                      <option value="">Select machine...</option>
-                      {machines.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Program Name</label>
-                    <input type="text" className="form-input" placeholder="e.g., O1234" value={newOperation.program_name} onChange={e => setNewOperation({ ...newOperation, program_name: e.target.value })} />
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label className="form-label">Cycle Time (min)</label>
-                    <input type="number" className="form-input" min="0" value={newOperation.cycle_time} onChange={e => setNewOperation({ ...newOperation, cycle_time: e.target.value })} />
-                  </div>
-                </div>
-                <div className="form-group" style={{ marginTop: 12 }}>
-                  <label className="form-label">Description</label>
-                  <input type="text" className="form-input" placeholder="Operation description" value={newOperation.description} onChange={e => setNewOperation({ ...newOperation, description: e.target.value })} />
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                  <button className="btn btn-primary" onClick={() => {
-                    if (!newOperation.op_number) { alert('Please enter operation number'); return; }
-                    onAddOperation({ ...newOperation, part_id: part.id });
-                    setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
-                    setShowAddOperation(false);
-                  }}><Icons.Check /> Add</button>
-                  <button className="btn btn-secondary" onClick={() => { setShowAddOperation(false); setNewOperation({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 }); }}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            {/* Operations Table */}
-            {partOperations.length > 0 ? (
-              <>
+              {parentAssemblies.length > 0 ? (
                 <div className="table-container">
                   <table className="table">
                     <thead>
-                      <tr><th>Op #</th><th>Machine</th><th>Program</th><th>Description</th><th>Cycle Time</th><th></th></tr>
+                      <tr>
+                        <th>Assembly Part Number</th>
+                        <th>Description</th>
+                        <th>Type</th>
+                        <th>Quantity</th>
+                        <th>Position</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      {partOperations.map(op => (
-                        <tr key={op.id}>
-                          <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{op.op_number}</strong></td>
-                          <td>{getMachineName(op.machine_id)}</td>
-                          <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{op.program_name || '-'}</td>
-                          <td>{op.description || '-'}</td>
-                          <td>{op.cycle_time || 0} min</td>
-                          <td>
-                            <button className="btn btn-ghost" onClick={() => { if (confirm('Delete this operation?')) onDeleteOperation(op.id); }} style={{ color: '#ef4444' }}>
-                              <Icons.Trash />
-                            </button>
-                          </td>
+                      {parentAssemblies.map(({ parent, quantity, position, id }) => (
+                        <tr key={id}>
+                          <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{parent.part_number}</strong></td>
+                          <td>{parent.description}</td>
+                          <td><span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{parent.type}</span></td>
+                          <td>{quantity}</td>
+                          <td>{position || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div style={{ marginTop: 16, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Cycle Time</div>
-                      <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--accent-blue)' }}>
-                        {calculateTotalCycleTime()} min
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                      {partOperations.length} operation{partOperations.length !== 1 ? 's' : ''}
-                    </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  This part is not used in any assemblies yet
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Revision History Tab */}
+        {activeTab === 'revisions' && (
+          <div>
+            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Revision Information
+              </div>
+              <div className="info-grid">
+                <div className="info-card">
+                  <div className="info-label">Current Revision</div>
+                  <div className="info-value" style={{ fontFamily: 'monospace', color: 'var(--accent-blue)', fontSize: 18, fontWeight: 600 }}>
+                    {part.part_number.split('-').pop() || '00'}
                   </div>
                 </div>
-              </>
-            ) : (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                No operations defined yet. Click "Add Operation" to start building the routing.
+                <div className="info-card">
+                  <div className="info-label">Date Created</div>
+                  <div className="info-value">{formatDate(part.created_at)}</div>
+                </div>
+                <div className="info-card">
+                  <div className="info-label">Last Updated</div>
+                  <div className="info-value">{formatDate(part.updated_at)}</div>
+                </div>
               </div>
-            )}
+
+              {part.revision_notes && (
+                <div style={{ marginTop: 24 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Revision Notes</div>
+                  <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)', whiteSpace: 'pre-wrap' }}>
+                    {part.revision_notes}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 24, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                  <strong>Note:</strong> Clicking "Increment Revision" will create a new revision of this part with an incremented revision number.
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  The new revision will maintain all current data and allow you to add new revision notes.
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
