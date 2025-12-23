@@ -433,6 +433,10 @@ function MainApp({ user, onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [checkinItems, setCheckinItems] = useState([]);
 
+  // Delivery notes state
+  const [deliveryNotes, setDeliveryNotes] = useState([]);
+  const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -453,6 +457,8 @@ function MainApp({ user, onLogout }) {
       const { data: operationsData } = await supabase.from('operations').select('*');
       const { data: checkinsData } = await supabase.from('project_checkins').select('*').order('checkin_date', { ascending: false });
       const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
+      const { data: deliveryNotesData } = await supabase.from('delivery_notes').select('*').order('delivery_date', { ascending: false });
+      const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -464,6 +470,8 @@ function MainApp({ user, onLogout }) {
       setOperations(operationsData || []);
       setCheckins(checkinsData || []);
       setCheckinItems(checkinItemsData || []);
+      setDeliveryNotes(deliveryNotesData || []);
+      setDeliveryNoteItems(deliveryNoteItemsData || []);
     } catch (err) {
       console.error('Error fetching data:', err);
       showToast('Error loading data', 'error');
@@ -929,6 +937,62 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // ============================================
+  // DELIVERY NOTES HANDLERS
+  // ============================================
+  const handleAddDeliveryNote = async (deliveryNoteData) => {
+    try {
+      // Create the delivery note
+      const { data: deliveryNote, error: noteError } = await supabase
+        .from('delivery_notes')
+        .insert({
+          project_id: deliveryNoteData.project_id,
+          delivery_date: deliveryNoteData.delivery_date,
+          notes: deliveryNoteData.notes,
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (noteError) throw noteError;
+
+      // Create the delivery note items
+      const itemsToInsert = deliveryNoteData.items.map(item => ({
+        delivery_note_id: deliveryNote.id,
+        description: item.description,
+        quantity: item.quantity,
+        part_id: item.part_id || null
+      }));
+
+      const { data: items, error: itemsError } = await supabase
+        .from('delivery_note_items')
+        .insert(itemsToInsert)
+        .select();
+
+      if (itemsError) throw itemsError;
+
+      setDeliveryNotes([deliveryNote, ...deliveryNotes]);
+      setDeliveryNoteItems([...deliveryNoteItems, ...items]);
+      showToast('Delivery note created successfully');
+    } catch (err) {
+      console.error('Error adding delivery note:', err);
+      showToast('Error adding delivery note', 'error');
+    }
+  };
+
+  const handleDeleteDeliveryNote = async (deliveryNoteId) => {
+    try {
+      const { error } = await supabase.from('delivery_notes').update({ deleted_at: new Date().toISOString() }).eq('id', deliveryNoteId);
+      if (error) throw error;
+      setDeliveryNotes(deliveryNotes.filter(dn => dn.id !== deliveryNoteId));
+      setDeliveryNoteItems(deliveryNoteItems.filter(item => item.delivery_note_id !== deliveryNoteId));
+      showToast('Delivery note deleted');
+    } catch (err) {
+      console.error('Error deleting delivery note:', err);
+      showToast('Error deleting delivery note', 'error');
+    }
+  };
+
   if (loading) {
     return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
   }
@@ -986,7 +1050,7 @@ function MainApp({ user, onLogout }) {
           </nav>
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
-            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} />)}
+            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} deliveryNotes={deliveryNotes} deliveryNoteItems={deliveryNoteItems} parts={parts} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} onAddDeliveryNote={handleAddDeliveryNote} onDeleteDeliveryNote={handleDeleteDeliveryNote} />)}
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
