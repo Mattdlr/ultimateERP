@@ -3435,6 +3435,7 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                 No components in BOM yet. Click "Add Component" to start building the assembly.
               </div>
             )}
+            </div>
           </div>
         )}
 
