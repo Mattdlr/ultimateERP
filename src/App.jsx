@@ -2773,6 +2773,8 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
   const [newBomItem, setNewBomItem] = useState({ child_id: '', quantity: 1, position: '' });
   const [showAddOperation, setShowAddOperation] = useState(false);
   const [newOperation, setNewOperation] = useState({ op_number: '', machine_id: '', program_name: '', description: '', cycle_time: 0 });
+  const [editingOperationId, setEditingOperationId] = useState(null);
+  const [editingOperationData, setEditingOperationData] = useState({});
 
   const supplier = suppliers.find(s => s.id === part.supplier_id);
   const material = materials.find(m => m.id === part.stock_material_id);
@@ -2855,8 +2857,13 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
   const startEdit = () => {
     setEditData({
       description: part.description,
+      uom: part.uom,
       finished_weight: part.finished_weight,
+      supplier_id: part.supplier_id,
       supplier_code: part.supplier_code,
+      stock_material_id: part.stock_material_id,
+      stock_form: part.stock_form,
+      stock_dimensions: part.stock_dimensions || {},
       revision_notes: part.revision_notes
     });
     setIsEditing(true);
@@ -2865,6 +2872,28 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
   const saveEdit = () => {
     onUpdatePart(part.id, editData);
     setIsEditing(false);
+  };
+
+  const startEditOperation = (operation) => {
+    setEditingOperationId(operation.id);
+    setEditingOperationData({
+      op_number: operation.op_number,
+      machine_id: operation.machine_id,
+      program_name: operation.program_name,
+      description: operation.description,
+      cycle_time: operation.cycle_time
+    });
+  };
+
+  const saveEditOperation = () => {
+    onUpdateOperation(editingOperationId, editingOperationData);
+    setEditingOperationId(null);
+    setEditingOperationData({});
+  };
+
+  const cancelEditOperation = () => {
+    setEditingOperationId(null);
+    setEditingOperationData({});
   };
 
   const handleStatusToggle = () => {
@@ -2997,7 +3026,17 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
               </div>
               <div className="info-card">
                 <div className="info-label">UOM</div>
-                <div className="info-value">{part.uom || 'EA'}</div>
+                {isEditing ? (
+                  <select className="form-input" value={editData.uom || 'EA'} onChange={e => setEditData({ ...editData, uom: e.target.value })}>
+                    <option value="EA">EA (Each)</option>
+                    <option value="KG">KG (Kilogram)</option>
+                    <option value="M">M (Meter)</option>
+                    <option value="L">L (Liter)</option>
+                    <option value="SET">SET</option>
+                  </select>
+                ) : (
+                  <div className="info-value">{part.uom || 'EA'}</div>
+                )}
               </div>
               <div className="info-card">
                 <div className="info-label">Status</div>
@@ -3044,7 +3083,16 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                 <div className="info-grid">
                   <div className="info-card">
                     <div className="info-label">Supplier</div>
-                    <div className="info-value">{supplier?.name || '-'}</div>
+                    {isEditing ? (
+                      <select className="form-input" value={editData.supplier_id || ''} onChange={e => setEditData({ ...editData, supplier_id: e.target.value || null })}>
+                        <option value="">-- Select Supplier --</option>
+                        {suppliers.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="info-value">{supplier?.name || '-'}</div>
+                    )}
                   </div>
                   <div className="info-card">
                     <div className="info-label">Supplier Code</div>
@@ -3054,7 +3102,7 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                       <div className="info-value">{part.supplier_code || '-'}</div>
                     )}
                   </div>
-                  {supplier && (
+                  {supplier && !isEditing && (
                     <>
                       <div className="info-card">
                         <div className="info-label">Lead Time</div>
@@ -3112,51 +3160,107 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
         {activeTab === 'stock' && part.type === 'manufactured' && (
           <div>
             <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.Package /> Stock Material Information
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Package /> Stock Material Information
+                </div>
+                {!isEditing && (
+                  <button className="btn btn-secondary btn-sm" onClick={startEdit}>
+                    <Icons.Pencil /> Edit
+                  </button>
+                )}
               </div>
               <div className="info-grid">
                 <div className="info-card">
                   <div className="info-label">Material</div>
-                  <div className="info-value">{material?.name || '-'}</div>
+                  {isEditing ? (
+                    <select className="form-input" value={editData.stock_material_id || ''} onChange={e => setEditData({ ...editData, stock_material_id: e.target.value || null })}>
+                      <option value="">-- Select Material --</option>
+                      {materials.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="info-value">{material?.name || '-'}</div>
+                  )}
                 </div>
                 <div className="info-card">
                   <div className="info-label">Stock Form</div>
-                  <div className="info-value">
-                    {part.stock_form ? part.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
-                  </div>
+                  {isEditing ? (
+                    <select className="form-input" value={editData.stock_form || ''} onChange={e => setEditData({ ...editData, stock_form: e.target.value })}>
+                      <option value="">-- Select Form --</option>
+                      <option value="round_bar">Round Bar</option>
+                      <option value="flat_bar">Flat Bar</option>
+                      <option value="plate">Plate</option>
+                      <option value="hex_bar">Hex Bar</option>
+                      <option value="tube">Tube</option>
+                    </select>
+                  ) : (
+                    <div className="info-value">
+                      {part.stock_form ? part.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : '-'}
+                    </div>
+                  )}
                 </div>
-                {material && (
+                {material && !isEditing && (
                   <div className="info-card">
                     <div className="info-label">Density</div>
                     <div className="info-value">{material.density} kg/m³</div>
                   </div>
                 )}
               </div>
-              {part.stock_dimensions && Object.keys(part.stock_dimensions).length > 0 && (
+              {((isEditing && editData.stock_form) || (!isEditing && part.stock_dimensions && Object.keys(part.stock_dimensions).length > 0)) && (
                 <>
                   <div style={{ fontSize: 14, fontWeight: 600, marginTop: 24, marginBottom: 12 }}>Dimensions</div>
-                  <div className="info-grid">
-                    {StockCalculations.getDimensionFields(part.stock_form).map(field => (
-                      part.stock_dimensions[field.name] && (
+                  {isEditing ? (
+                    <div className="info-grid">
+                      {editData.stock_form && StockCalculations.getDimensionFields(editData.stock_form).map(field => (
                         <div key={field.name} className="info-card">
                           <div className="info-label">{field.label}</div>
-                          <div className="info-value">{part.stock_dimensions[field.name]} mm</div>
+                          <input
+                            type="number"
+                            className="form-input"
+                            placeholder="mm"
+                            value={editData.stock_dimensions?.[field.name] || ''}
+                            onChange={e => setEditData({
+                              ...editData,
+                              stock_dimensions: {
+                                ...editData.stock_dimensions,
+                                [field.name]: parseFloat(e.target.value) || 0
+                              }
+                            })}
+                          />
                         </div>
-                      )
-                    ))}
-                    <div className="info-card" style={{ background: 'rgba(255,107,53,0.1)', borderLeft: '3px solid var(--accent-orange)' }}>
-                      <div className="info-label">Stock Weight</div>
-                      <div className="info-value" style={{ color: 'var(--accent-orange)', fontSize: 20, fontWeight: 600 }}>
-                        {StockCalculations.calculateWeight(
-                          part.stock_form,
-                          part.stock_dimensions,
-                          material?.density || 0
-                        ).toFixed(3)} kg
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="info-grid">
+                      {StockCalculations.getDimensionFields(part.stock_form).map(field => (
+                        part.stock_dimensions[field.name] && (
+                          <div key={field.name} className="info-card">
+                            <div className="info-label">{field.label}</div>
+                            <div className="info-value">{part.stock_dimensions[field.name]} mm</div>
+                          </div>
+                        )
+                      ))}
+                      <div className="info-card" style={{ background: 'rgba(255,107,53,0.1)', borderLeft: '3px solid var(--accent-orange)' }}>
+                        <div className="info-label">Stock Weight</div>
+                        <div className="info-value" style={{ color: 'var(--accent-orange)', fontSize: 20, fontWeight: 600 }}>
+                          {StockCalculations.calculateWeight(
+                            part.stock_form,
+                            part.stock_dimensions,
+                            material?.density || 0
+                          ).toFixed(3)} kg
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </>
+              )}
+              {isEditing && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
+                  <button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save Changes</button>
+                  <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
+                </div>
               )}
             </div>
           </div>
@@ -3285,20 +3389,88 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                         <tr><th>Op #</th><th>Machine</th><th>Program</th><th>Description</th><th>Cycle Time</th><th></th></tr>
                       </thead>
                       <tbody>
-                        {partOperations.map(op => (
-                          <tr key={op.id}>
-                            <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{op.op_number}</strong></td>
-                            <td>{getMachineName(op.machine_id)}</td>
-                            <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{op.program_name || '-'}</td>
-                            <td>{op.description || '-'}</td>
-                            <td>{op.cycle_time || 0} min</td>
-                            <td>
-                              <button className="btn btn-ghost" onClick={() => { if (confirm('Delete this operation?')) onDeleteOperation(op.id); }} style={{ color: '#ef4444' }}>
-                                <Icons.Trash />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {partOperations.map(op => {
+                          const isEditingThis = editingOperationId === op.id;
+                          return isEditingThis ? (
+                            <tr key={op.id} style={{ background: 'var(--bg-secondary)' }}>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  value={editingOperationData.op_number}
+                                  onChange={e => setEditingOperationData({ ...editingOperationData, op_number: e.target.value })}
+                                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                                />
+                              </td>
+                              <td>
+                                <select
+                                  className="form-input"
+                                  value={editingOperationData.machine_id || ''}
+                                  onChange={e => setEditingOperationData({ ...editingOperationData, machine_id: e.target.value })}
+                                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                                >
+                                  <option value="">Select...</option>
+                                  {machines.map(m => (<option key={m.id} value={m.id}>{m.name}</option>))}
+                                </select>
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  value={editingOperationData.program_name || ''}
+                                  onChange={e => setEditingOperationData({ ...editingOperationData, program_name: e.target.value })}
+                                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  value={editingOperationData.description || ''}
+                                  onChange={e => setEditingOperationData({ ...editingOperationData, description: e.target.value })}
+                                  style={{ padding: '6px 10px', fontSize: '13px' }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  value={editingOperationData.cycle_time || 0}
+                                  onChange={e => setEditingOperationData({ ...editingOperationData, cycle_time: e.target.value })}
+                                  style={{ padding: '6px 10px', fontSize: '13px', width: '80px' }}
+                                />
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button className="btn btn-ghost" onClick={saveEditOperation} style={{ color: 'var(--accent-green)' }}>
+                                    <Icons.Check />
+                                  </button>
+                                  <button className="btn btn-ghost" onClick={cancelEditOperation}>
+                                    <Icons.X />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr key={op.id}>
+                              <td><strong style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>{op.op_number}</strong></td>
+                              <td>{getMachineName(op.machine_id)}</td>
+                              <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>{op.program_name || '-'}</td>
+                              <td>{op.description || '-'}</td>
+                              <td>{op.cycle_time || 0} min</td>
+                              <td>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button className="btn btn-ghost" onClick={() => startEditOperation(op)}>
+                                    <Icons.Pencil />
+                                  </button>
+                                  <button className="btn btn-ghost" onClick={() => { if (confirm('Delete this operation?')) onDeleteOperation(op.id); }} style={{ color: '#ef4444' }}>
+                                    <Icons.Trash />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
