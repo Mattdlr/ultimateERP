@@ -426,6 +426,7 @@ function MainApp({ user, onLogout }) {
   const [machines, setMachines] = useState([]);
   const [bomRelations, setBomRelations] = useState([]);
   const [operations, setOperations] = useState([]);
+  const [partRevisions, setPartRevisions] = useState([]);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
@@ -459,6 +460,7 @@ function MainApp({ user, onLogout }) {
       const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
       const { data: deliveryNotesData } = await supabase.from('delivery_notes').select('*').order('delivery_date', { ascending: false });
       const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
+      const { data: partRevisionsData } = await supabase.from('part_revisions').select('*').order('created_at', { ascending: false });
 
       setCustomers(customersData || []);
       setProjects(projectsData || []);
@@ -467,6 +469,7 @@ function MainApp({ user, onLogout }) {
       setParts(partsData || []);
       setMachines(machinesData || []);
       setBomRelations(bomData || []);
+      setPartRevisions(partRevisionsData || []);
       setOperations(operationsData || []);
       setCheckins(checkinsData || []);
       setCheckinItems(checkinItemsData || []);
@@ -743,15 +746,44 @@ function MainApp({ user, onLogout }) {
       return;
     }
 
-    if (!confirm(`Increment revision from ${part.part_number} to ${newPartNumber}?\n\nThis will update the part number and you can add revision notes.`)) {
-      return;
+    const revisionNotes = prompt(`Increment revision from ${part.part_number} to ${newPartNumber}?\n\nEnter revision notes (e.g., "Updated main diameter", "Material change"):`, '');
+    if (revisionNotes === null) {
+      return; // User cancelled
     }
 
     try {
-      const { error } = await supabase.from('parts').update({ part_number: newPartNumber }).eq('id', part.id);
+      // First, save the current revision to the part_revisions table
+      const currentRevision = part.part_number.split('-').pop() || '00';
+      const { error: revisionError } = await supabase.from('part_revisions').insert({
+        part_id: part.id,
+        revision_number: currentRevision,
+        part_number: part.part_number,
+        description: part.description,
+        finished_weight: part.finished_weight,
+        revision_notes: part.revision_notes || '',
+        uom: part.uom,
+        supplier_id: part.supplier_id,
+        supplier_code: part.supplier_code,
+        stock_material_id: part.stock_material_id,
+        stock_form: part.stock_form,
+        stock_dimensions: part.stock_dimensions,
+        created_by: user.id
+      });
+
+      if (revisionError) throw revisionError;
+
+      // Then update the part with new revision number and notes
+      const { error } = await supabase.from('parts').update({
+        part_number: newPartNumber,
+        revision_notes: revisionNotes.trim()
+      }).eq('id', part.id);
+
       if (error) throw error;
-      const updatedPart = { ...part, part_number: newPartNumber };
-      setParts(parts.map(p => p.id === part.id ? updatedPart : p));
+
+      // Refresh data to get the new revision in the history
+      await fetchData();
+
+      const updatedPart = { ...part, part_number: newPartNumber, revision_notes: revisionNotes.trim() };
       setSelectedPart(updatedPart);
       showToast(`Revision incremented to ${newPartNumber}`);
     } catch (err) {
@@ -1056,7 +1088,7 @@ function MainApp({ user, onLogout }) {
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
             {activeView === 'machines' && (<MachinesView machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} partRevisions={partRevisions} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
             {activeView === 'bom-explorer' && (<BOMExplorerView parts={parts} suppliers={suppliers} materials={materials} bomRelations={bomRelations} />)}
           </main>
         </div>
@@ -2765,7 +2797,7 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
 // ============================================
 // PART DETAIL VIEW
 // ============================================
-function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
+function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, partRevisions, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -2864,6 +2896,7 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
       stock_material_id: part.stock_material_id,
       stock_form: part.stock_form,
       stock_dimensions: part.stock_dimensions || {},
+      notes: part.notes,
       revision_notes: part.revision_notes
     });
     setIsEditing(true);
@@ -3118,10 +3151,10 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
               </div>
             )}
 
-            {/* Description and Revision Notes */}
+            {/* Description */}
             <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.FileText /> Description & Notes
+                <Icons.FileText /> Description
               </div>
               <div className="form-group">
                 <label className="form-label">Description</label>
@@ -3131,13 +3164,53 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                   <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>{part.description}</div>
                 )}
               </div>
-              <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label">Revision Notes</label>
+            </div>
+
+            {/* General Notes (applies to all revisions) */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> General Notes
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                These notes apply to all revisions of this part
+              </div>
+              <div className="form-group">
                 {isEditing ? (
-                  <textarea className="form-textarea" rows="4" placeholder="Add revision notes..." value={editData.revision_notes || ''} onChange={e => setEditData({ ...editData, revision_notes: e.target.value })} />
+                  <textarea
+                    className="form-textarea"
+                    rows="4"
+                    placeholder="General notes about this part (e.g., materials, finishes, special handling)..."
+                    value={editData.notes || ''}
+                    onChange={e => setEditData({ ...editData, notes: e.target.value })}
+                  />
                 ) : (
                   <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6, minHeight: 60, whiteSpace: 'pre-wrap' }}>
-                    {part.revision_notes || 'No revision notes'}
+                    {part.notes || 'No general notes'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Current Revision Notes */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Current Revision Notes
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Notes specific to revision {part.part_number.split('-').pop() || '00'}
+              </div>
+              <div className="form-group">
+                {isEditing ? (
+                  <textarea
+                    className="form-textarea"
+                    rows="4"
+                    placeholder="Notes specific to this revision (e.g., 'Updated diameter', 'Material change')..."
+                    value={editData.revision_notes || ''}
+                    onChange={e => setEditData({ ...editData, revision_notes: e.target.value })}
+                  />
+                ) : (
+                  <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6, minHeight: 60, whiteSpace: 'pre-wrap' }}>
+                    {part.revision_notes || 'No revision notes for this revision'}
                   </div>
                 )}
               </div>
@@ -3655,20 +3728,21 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
         {/* Revision History Tab */}
         {activeTab === 'revisions' && (
           <div>
-            <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
+            {/* Current Revision */}
+            <div className="card" style={{ background: 'var(--bg-tertiary)', borderLeft: '4px solid var(--accent-green)' }}>
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.FileText /> Revision Information
+                <Icons.FileText /> Current Revision
               </div>
               <div className="info-grid">
                 <div className="info-card">
-                  <div className="info-label">Current Revision</div>
-                  <div className="info-value" style={{ fontFamily: 'monospace', color: 'var(--accent-blue)', fontSize: 18, fontWeight: 600 }}>
+                  <div className="info-label">Revision</div>
+                  <div className="info-value" style={{ fontFamily: 'monospace', color: 'var(--accent-green)', fontSize: 18, fontWeight: 600 }}>
                     {part.part_number.split('-').pop() || '00'}
                   </div>
                 </div>
                 <div className="info-card">
-                  <div className="info-label">Date Created</div>
-                  <div className="info-value">{formatDate(part.created_at)}</div>
+                  <div className="info-label">Part Number</div>
+                  <div className="info-value" style={{ fontFamily: 'monospace' }}>{part.part_number}</div>
                 </div>
                 <div className="info-card">
                   <div className="info-label">Last Updated</div>
@@ -3677,21 +3751,86 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
               </div>
 
               {part.revision_notes && (
-                <div style={{ marginTop: 24 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Revision Notes</div>
-                  <div style={{ padding: 16, background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)', whiteSpace: 'pre-wrap' }}>
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>REVISION NOTES</div>
+                  <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6, whiteSpace: 'pre-wrap', fontSize: 14 }}>
                     {part.revision_notes}
                   </div>
                 </div>
               )}
+            </div>
 
-              <div style={{ marginTop: 24, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
-                  <strong>Note:</strong> Clicking "Increment Revision" will create a new revision of this part with an incremented revision number.
+            {/* Revision History */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Revision History
+              </div>
+              {partRevisions.filter(r => r.part_id === part.id).length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {partRevisions
+                    .filter(r => r.part_id === part.id)
+                    .map(revision => (
+                      <div key={revision.id} className="card" style={{ background: 'var(--bg-secondary)', padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                              <span style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>
+                                Revision {revision.revision_number}
+                              </span>
+                              <span style={{ marginLeft: 12, fontFamily: 'monospace', fontSize: 13, color: 'var(--text-muted)' }}>
+                                {revision.part_number}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                              Created: {formatDate(revision.created_at)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {revision.revision_notes && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>REVISION NOTES</div>
+                            <div style={{ padding: 10, background: 'rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                              {revision.revision_notes}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Show key changes from this revision */}
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>SNAPSHOT</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, fontSize: 12 }}>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>Description:</span> {revision.description}
+                            </div>
+                            {revision.finished_weight && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Weight:</span> {parseFloat(revision.finished_weight).toFixed(3)} kg
+                              </div>
+                            )}
+                            {revision.stock_form && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Stock Form:</span> {revision.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  The new revision will maintain all current data and allow you to add new revision notes.
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No previous revisions. Revision history will appear here when you increment the revision.
                 </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 24, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                <strong>Note:</strong> When you click "Increment Revision", the current revision data is saved to history, and you can add notes explaining the changes made in the new revision.
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                This provides full traceability of all changes across revisions.
               </div>
             </div>
           </div>
