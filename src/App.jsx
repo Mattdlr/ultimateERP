@@ -2161,7 +2161,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               </div>
             </div>
             <div className="label-preview-body">
-              <div style={{ background: '#fefef8', color: '#000', padding: '60px 50px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '13px', lineHeight: 1.5, fontFamily: 'Arial, sans-serif' }}>
+              <div style={{ background: 'white', color: '#000', padding: '60px 50px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '13px', lineHeight: 1.5, fontFamily: 'Arial, sans-serif' }}>
 
                 {/* Header with Logo */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 50 }}>
