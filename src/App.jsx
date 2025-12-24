@@ -2161,91 +2161,104 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               </div>
             </div>
             <div className="label-preview-body">
-              <div style={{ background: 'white', color: 'black', padding: '60px 50px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '14px', lineHeight: 1.6 }}>
-                {/* Company Address Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 40 }}>
-                  <div>
-                    <div style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, color: '#1a1a1a' }}>Ultimate Performance</div>
-                    <div style={{ fontSize: 13, color: '#555', lineHeight: 1.8 }}>
-                      <div>Units 9 & 10</div>
-                      <div>Twigden Barns</div>
-                      <div>Creaton</div>
-                      <div>NN6 8LU</div>
-                      <div style={{ marginTop: 4 }}>Tel: 01604 505222</div>
-                      <div>Email: office@ultimatep.com</div>
+              <div style={{ background: '#fefef8', color: '#000', padding: '60px 50px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '13px', lineHeight: 1.5, fontFamily: 'Arial, sans-serif' }}>
+
+                {/* Header with Logo */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 50 }}>
+                  {/* Left: Document Title and Customer */}
+                  <div style={{ flex: 1 }}>
+                    <h1 style={{ fontSize: 36, fontWeight: 'bold', margin: 0, marginBottom: 30, color: '#000', letterSpacing: '-0.5px' }}>DELIVERY NOTE</h1>
+                    <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 2 }}>{customer?.name || 'Unknown Customer'}</div>
+                      {customer?.address && customer.address.split('\n').map((line, i) => (
+                        <div key={i}>{line}</div>
+                      ))}
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <h1 style={{ fontSize: 32, fontWeight: 'bold', margin: 0, marginBottom: 8, color: '#1a1a1a' }}>DELIVERY NOTE</h1>
-                    <div style={{ fontSize: 16, fontWeight: 600, color: '#666' }}>
-                      {printingDeliveryNote.delivery_note_number || 'DN-XXX-XX'}
+
+                  {/* Right: Logo and Company Details */}
+                  <div style={{ textAlign: 'right', marginLeft: 40 }}>
+                    {/* Logo */}
+                    <div style={{ position: 'relative', marginBottom: 20 }}>
+                      <div style={{ fontSize: 20, fontWeight: 'bold', letterSpacing: '2px', color: '#000' }}>
+                        ULTIMATE
+                        <span style={{ fontSize: 9, fontWeight: 'normal', letterSpacing: '1px', color: '#666', marginLeft: 4 }}>PERFORMANCE</span>
+                      </div>
+                      <div style={{ position: 'absolute', top: -5, right: -10, width: 100, height: 40, background: 'linear-gradient(135deg, transparent 45%, #e31e24 45%, #e31e24 55%, transparent 55%)', opacity: 0.9 }}></div>
+                    </div>
+
+                    {/* Company Address */}
+                    <div style={{ fontSize: 11, lineHeight: 1.6, color: '#000' }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Ultimate Performance Limited</div>
+                      <div>9-10 Twigden Barns</div>
+                      <div>Creaton Road</div>
+                      <div>Creaton</div>
+                      <div>NORTHAMPTON</div>
+                      <div>Northamptonshire</div>
+                      <div>NN6 8LU</div>
+                      <div>GBR</div>
+                      <div style={{ marginTop: 8 }}>
+                        <div><strong>T:</strong> 01604 505222</div>
+                        <div><strong>E:</strong> accounts@ultimatep.com</div>
+                        <div><strong>W:</strong> www.ultimatep.com</div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Customer Address and Details */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginBottom: 40, paddingBottom: 24, borderBottom: '2px solid #e0e0e0' }}>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 8 }}>DELIVER TO:</div>
-                    <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4, color: '#1a1a1a' }}>{customer?.name || 'Unknown Customer'}</div>
-                    {customer?.address && <div style={{ fontSize: 13, color: '#555', whiteSpace: 'pre-line', marginTop: 6 }}>{customer.address}</div>}
-                    {customer?.contact && <div style={{ fontSize: 13, color: '#555', marginTop: 6 }}>Contact: {customer.contact}</div>}
-                  </div>
-                  <div>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 4 }}>PROJECT</div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a' }}>#{project.project_number}</div>
-                      <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>{project.title}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 4 }}>DELIVERY DATE</div>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a' }}>{formatDate(printingDeliveryNote.delivery_date)}</div>
-                    </div>
-                  </div>
+                {/* Delivery Note Details */}
+                <div style={{ marginBottom: 40 }}>
+                  <table style={{ fontSize: 13, lineHeight: 2 }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ width: 150, fontWeight: 'bold' }}>Delivery Date</td>
+                        <td>{formatDate(printingDeliveryNote.delivery_date)}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 'bold' }}>Delivery Note Number</td>
+                        <td>{printingDeliveryNote.delivery_note_number || 'DN-XXX-XX'}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ fontWeight: 'bold' }}>Order No.</td>
+                        <td>{project.project_number}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
 
                 {/* Items Table */}
-                <div style={{ marginBottom: 40 }}>
+                <div style={{ marginBottom: 60 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ background: '#f5f5f5', borderTop: '2px solid #1a1a1a', borderBottom: '2px solid #1a1a1a' }}>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 700, color: '#1a1a1a', letterSpacing: '0.5px' }}>DESCRIPTION</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: 11, fontWeight: 700, color: '#1a1a1a', letterSpacing: '0.5px', width: 120 }}>QUANTITY</th>
+                      <tr style={{ borderTop: '2px solid #000', borderBottom: '2px solid #000' }}>
+                        <th style={{ textAlign: 'left', padding: '10px 0', fontSize: 13, fontWeight: 'bold', width: 60 }}>Item</th>
+                        <th style={{ textAlign: 'left', padding: '10px 0', fontSize: 13, fontWeight: 'bold' }}>Description</th>
+                        <th style={{ textAlign: 'right', padding: '10px 0', fontSize: 13, fontWeight: 'bold', width: 80 }}>Qty</th>
                       </tr>
                     </thead>
                     <tbody>
                       {getDeliveryNoteItems(printingDeliveryNote.id).map((item, idx) => (
-                        <tr key={item.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
-                          <td style={{ padding: '14px 16px', fontSize: 14, color: '#1a1a1a' }}>{item.description}</td>
-                          <td style={{ padding: '14px 16px', fontSize: 14, textAlign: 'center', fontWeight: 600, color: '#1a1a1a' }}>{item.quantity}</td>
+                        <tr key={item.id}>
+                          <td style={{ padding: '10px 0', fontSize: 13, verticalAlign: 'top' }}>{idx + 1}</td>
+                          <td style={{ padding: '10px 0', fontSize: 13, verticalAlign: 'top' }}>{item.description}</td>
+                          <td style={{ padding: '10px 0', fontSize: 13, textAlign: 'right', verticalAlign: 'top' }}>{item.quantity}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
 
-                {/* Notes Section */}
+                {/* Notes */}
                 {printingDeliveryNote.notes && (
-                  <div style={{ marginBottom: 40, padding: 16, background: '#f9f9f9', borderLeft: '4px solid #1a1a1a' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 8 }}>NOTES</div>
-                    <div style={{ fontSize: 13, color: '#555', whiteSpace: 'pre-wrap' }}>{printingDeliveryNote.notes}</div>
+                  <div style={{ marginBottom: 60, fontSize: 13 }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Notes:</div>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{printingDeliveryNote.notes}</div>
                   </div>
                 )}
 
-                {/* Signature Section */}
-                <div style={{ marginTop: 60, paddingTop: 32, borderTop: '2px solid #e0e0e0' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60 }}>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 20 }}>RECEIVED BY</div>
-                      <div style={{ borderBottom: '2px solid #1a1a1a', height: 50, marginBottom: 8 }}></div>
-                      <div style={{ fontSize: 11, color: '#999' }}>Signature</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: '#888', letterSpacing: '0.5px', marginBottom: 20 }}>DATE RECEIVED</div>
-                      <div style={{ borderBottom: '2px solid #1a1a1a', height: 50, marginBottom: 8 }}></div>
-                      <div style={{ fontSize: 11, color: '#999' }}>Date</div>
-                    </div>
-                  </div>
+                {/* Footer with Company Registration */}
+                <div style={{ position: 'absolute', bottom: 40, left: 50, right: 50, fontSize: 9, textAlign: 'center', color: '#000', borderTop: '1px solid #ccc', paddingTop: 10 }}>
+                  Company No: 04813549. Registered Office: Unit 9-10, Twigden Barns, Creaton Road, Creaton, Northamptonshire, NN6 8LU
                 </div>
               </div>
             </div>
