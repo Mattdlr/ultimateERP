@@ -1828,6 +1828,7 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
 // PROJECT DETAIL VIEW
 // ============================================
 function ProjectDetailView({ project, customer, checkins, checkinItems, deliveryNotes, deliveryNoteItems, parts, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin, onAddDeliveryNote, onDeleteDeliveryNote }) {
+  const [activeTab, setActiveTab] = useState('details');
   const [showAddCheckinModal, setShowAddCheckinModal] = useState(false);
   const [expandedCheckins, setExpandedCheckins] = useState([]);
   const [showLabelPreview, setShowLabelPreview] = useState(false);
@@ -1887,6 +1888,13 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
   const isOverdue = project.status !== 'completed' && project.due_date && new Date(project.due_date) < new Date();
   const notes = project.project_notes || [];
 
+  // Define tabs
+  const tabs = [
+    { id: 'details', label: 'Details', icon: Icons.FileText },
+    { id: 'checkins', label: 'Check-ins', icon: Icons.Package },
+    { id: 'delivery', label: 'Delivery Notes', icon: Icons.Truck }
+  ];
+
   return (
     <>
       <button className="btn btn-ghost" onClick={onBack} style={{ marginBottom: 16 }}>← Back to Projects</button>
@@ -1905,48 +1913,88 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
             {isEditing ? (<><button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button><button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button></>) : (<><button className="btn btn-secondary" onClick={() => setShowLabelPreview(true)}><Icons.Printer /> Print Label</button><button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button><button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this project?')) onDeleteProject(project.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button></>)}
           </div>
         </div>
-        <div className="info-grid">
-          <div className="info-card"><div className="info-label">Date Started</div><div className="info-value">{formatDate(project.date_started)}</div></div>
-          <div className="info-card"><div className="info-label">Due Date</div>{isEditing ? (<input type="date" className="form-input" value={editData.due_date} onChange={e => setEditData({ ...editData, due_date: e.target.value })} />) : (<div className="info-value" style={isOverdue ? { color: '#ef4444' } : {}}>{formatDate(project.due_date)}</div>)}</div>
-          <div className="info-card"><div className="info-label">Actual Finish</div><div className="info-value">{project.actual_finish_date ? formatDate(project.actual_finish_date) : '-'}</div></div>
-          <div className="info-card"><div className="info-label">Value</div>{isEditing ? (<input type="number" className="form-input" value={editData.value} onChange={e => setEditData({ ...editData, value: e.target.value })} />) : (<div className="info-value money">£{parseFloat(project.value || 0).toLocaleString()}</div>)}</div>
-        </div>
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Update Status</div>
-          <div className="status-buttons">
-            <button className={`btn ${project.status === 'in-progress' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('in-progress')}>In Progress</button>
-            <button className={`btn ${project.status === 'on-hold' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('on-hold')} style={project.status === 'on-hold' ? { background: '#fbbf24', borderColor: '#fbbf24' } : {}}>On Hold</button>
-            <button className={`btn ${project.status === 'completed' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('completed')} style={project.status === 'completed' ? { background: 'var(--accent-green)', borderColor: 'var(--accent-green)' } : {}}>Completed</button>
-          </div>
-        </div>
-        <div className="notes-section">
-          <div className="notes-header"><div className="notes-title"><Icons.FileText /> Project Notes</div><span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{notes.length} note{notes.length !== 1 ? 's' : ''}</span></div>
-          <div className="notes-list">
-            {notes.length === 0 ? (<div style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>No notes yet</div>) : ([...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(note => (<div key={note.id} className="note-item"><div className="note-timestamp">{formatDateTime(note.created_at)} {note.created_by_email && <span style={{ color: 'var(--accent-orange)', marginLeft: 8 }}>• {note.created_by_email}</span>}</div><div className="note-text">{note.text}</div></div>)))}
-          </div>
-          <div className="add-note-form">
-            <textarea className="form-input" placeholder="Add a note..." value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }} />
-            <button className="btn btn-primary" onClick={handleAddNote} disabled={!newNote.trim()}><Icons.Plus /> Add Note</button>
+
+        {/* Tabs Navigation */}
+        <div style={{ borderBottom: '2px solid var(--border-color)', marginTop: 24, marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 4, overflowX: 'auto' }}>
+            {tabs.map(tab => {
+              const TabIcon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '12px 20px',
+                    border: 'none',
+                    background: activeTab === tab.id ? 'var(--bg-tertiary)' : 'transparent',
+                    color: activeTab === tab.id ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    borderBottom: activeTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    fontWeight: activeTab === tab.id ? 600 : 400,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <TabIcon style={{ width: 16, height: 16 }} />
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Parts Check-ins Section */}
-        <div className="card" style={{ marginTop: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.Package /> Parts Check-ins
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                Track parts received from customer
+        {/* Details Tab */}
+        {activeTab === 'details' && (
+          <>
+            <div className="info-grid">
+              <div className="info-card"><div className="info-label">Date Started</div><div className="info-value">{formatDate(project.date_started)}</div></div>
+              <div className="info-card"><div className="info-label">Due Date</div>{isEditing ? (<input type="date" className="form-input" value={editData.due_date} onChange={e => setEditData({ ...editData, due_date: e.target.value })} />) : (<div className="info-value" style={isOverdue ? { color: '#ef4444' } : {}}>{formatDate(project.due_date)}</div>)}</div>
+              <div className="info-card"><div className="info-label">Actual Finish</div><div className="info-value">{project.actual_finish_date ? formatDate(project.actual_finish_date) : '-'}</div></div>
+              <div className="info-card"><div className="info-label">Value</div>{isEditing ? (<input type="number" className="form-input" value={editData.value} onChange={e => setEditData({ ...editData, value: e.target.value })} />) : (<div className="info-value money">£{parseFloat(project.value || 0).toLocaleString()}</div>)}</div>
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Update Status</div>
+              <div className="status-buttons">
+                <button className={`btn ${project.status === 'in-progress' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('in-progress')}>In Progress</button>
+                <button className={`btn ${project.status === 'on-hold' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('on-hold')} style={project.status === 'on-hold' ? { background: '#fbbf24', borderColor: '#fbbf24' } : {}}>On Hold</button>
+                <button className={`btn ${project.status === 'completed' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => handleStatusChange('completed')} style={project.status === 'completed' ? { background: 'var(--accent-green)', borderColor: 'var(--accent-green)' } : {}}>Completed</button>
               </div>
             </div>
-            <button className="btn btn-primary" onClick={() => setShowAddCheckinModal(true)}>
-              <Icons.Plus /> New Check-in
-            </button>
-          </div>
+            <div className="notes-section">
+              <div className="notes-header"><div className="notes-title"><Icons.FileText /> Project Notes</div><span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{notes.length} note{notes.length !== 1 ? 's' : ''}</span></div>
+              <div className="notes-list">
+                {notes.length === 0 ? (<div style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>No notes yet</div>) : ([...notes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(note => (<div key={note.id} className="note-item"><div className="note-timestamp">{formatDateTime(note.created_at)} {note.created_by_email && <span style={{ color: 'var(--accent-orange)', marginLeft: 8 }}>• {note.created_by_email}</span>}</div><div className="note-text">{note.text}</div></div>)))}
+              </div>
+              <div className="add-note-form">
+                <textarea className="form-input" placeholder="Add a note..." value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }} />
+                <button className="btn btn-primary" onClick={handleAddNote} disabled={!newNote.trim()}><Icons.Plus /> Add Note</button>
+              </div>
+            </div>
+          </>
+        )}
 
-          {projectCheckins.length > 0 ? (
+        {/* Check-ins Tab */}
+        {activeTab === 'checkins' && (
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Package /> Parts Check-ins
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Track parts received from customer
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={() => setShowAddCheckinModal(true)}>
+                <Icons.Plus /> New Check-in
+              </button>
+            </div>
+
+            {projectCheckins.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {projectCheckins.map(checkin => {
                 const items = getCheckinItems(checkin.id);
@@ -2011,25 +2059,27 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               No check-ins yet. Click "New Check-in" to record parts received from the customer.
             </div>
           )}
-        </div>
-
-        {/* Delivery Notes Section */}
-        <div className="card" style={{ marginTop: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Icons.FileText /> Delivery Notes
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                Track parts delivered to customer
-              </div>
-            </div>
-            <button className="btn btn-primary" onClick={() => setShowAddDeliveryNoteModal(true)}>
-              <Icons.Plus /> New Delivery Note
-            </button>
           </div>
+        )}
 
-          {projectDeliveryNotes.length > 0 ? (
+        {/* Delivery Notes Tab */}
+        {activeTab === 'delivery' && (
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.FileText /> Delivery Notes
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Track parts delivered to customer
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={() => setShowAddDeliveryNoteModal(true)}>
+                <Icons.Plus /> New Delivery Note
+              </button>
+            </div>
+
+            {projectDeliveryNotes.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {projectDeliveryNotes.map(deliveryNote => {
                 const items = getDeliveryNoteItems(deliveryNote.id);
@@ -2101,7 +2151,8 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               No delivery notes yet. Click "New Delivery Note" to create one.
             </div>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Add Check-in Modal */}
