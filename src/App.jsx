@@ -1402,8 +1402,7 @@ function OrderMaterialsView({ parts, materials }) {
     let emailContent = `Dear Supplier,\n\nI would like to request a quote for the following stock materials:\n\n`;
 
     materialRequirements.forEach((req, idx) => {
-      emailContent += `${idx + 1}. ${req.material.name} - ${req.stockForm.replace('_', ' ').toUpperCase()}\n`;
-      emailContent += `   Density: ${req.material.density} kg/m³\n\n`;
+      emailContent += `${idx + 1}. ${req.material.name} - ${req.stockForm.replace('_', ' ').toUpperCase()}\n\n`;
 
       req.items.forEach(item => {
         const dims = item.dimensions;
@@ -1416,7 +1415,7 @@ function OrderMaterialsView({ parts, materials }) {
         } else if (item.part.stock_form === 'plate') {
           dimStr = `${dims.width}mm × ${dims.height}mm × ${dims.thickness}mm`;
         } else if (item.part.stock_form === 'hex_bar') {
-          dimStr = `${dims.width_across_flats}mm A/F × ${dims.length}mm`;
+          dimStr = `${dims.across_flats}mm A/F × ${dims.length}mm`;
         } else if (item.part.stock_form === 'tube') {
           dimStr = `OD${dims.outer_diameter}mm × WT${dims.wall_thickness}mm × ${dims.length}mm`;
         }
@@ -1580,7 +1579,7 @@ function OrderMaterialsView({ parts, materials }) {
                           } else if (item.part.stock_form === 'plate') {
                             dimStr = `${dims.width}mm × ${dims.height}mm × ${dims.thickness}mm`;
                           } else if (item.part.stock_form === 'hex_bar') {
-                            dimStr = `${dims.width_across_flats}mm A/F × ${dims.length}mm`;
+                            dimStr = `${dims.across_flats}mm A/F × ${dims.length}mm`;
                           } else if (item.part.stock_form === 'tube') {
                             dimStr = `OD${dims.outer_diameter}mm × WT${dims.wall_thickness}mm × ${dims.length}mm`;
                           }
