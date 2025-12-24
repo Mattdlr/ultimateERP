@@ -2179,12 +2179,12 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
                   {/* Right: Logo and Company Details */}
                   <div style={{ textAlign: 'right', marginLeft: 40 }}>
                     {/* Logo */}
-                    <div style={{ position: 'relative', marginBottom: 20 }}>
-                      <div style={{ fontSize: 20, fontWeight: 'bold', letterSpacing: '2px', color: '#000' }}>
-                        ULTIMATE
-                        <span style={{ fontSize: 9, fontWeight: 'normal', letterSpacing: '1px', color: '#666', marginLeft: 4 }}>PERFORMANCE</span>
-                      </div>
-                      <div style={{ position: 'absolute', top: -5, right: -10, width: 100, height: 40, background: 'linear-gradient(135deg, transparent 45%, #e31e24 45%, #e31e24 55%, transparent 55%)', opacity: 0.9 }}></div>
+                    <div style={{ marginBottom: 20 }}>
+                      <img
+                        src="/assets/Logo v3-600x220.png"
+                        alt="Ultimate Performance"
+                        style={{ width: '200px', height: 'auto' }}
+                      />
                     </div>
 
                     {/* Company Address */}
