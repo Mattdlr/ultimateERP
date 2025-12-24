@@ -2161,10 +2161,10 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               </div>
             </div>
             <div className="label-preview-body">
-              <div style={{ background: 'white', color: '#000', padding: '60px 50px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '13px', lineHeight: 1.5, fontFamily: 'Arial, sans-serif' }}>
+              <div style={{ background: 'white', color: '#000', padding: '50px 40px', minHeight: '297mm', maxWidth: '210mm', margin: '0 auto', fontSize: '13px', lineHeight: 1.5, fontFamily: 'Arial, sans-serif' }}>
 
                 {/* Header with Logo */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 50 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 35 }}>
                   {/* Left: Document Title and Customer */}
                   <div style={{ flex: 1 }}>
                     <h1 style={{ fontSize: 36, fontWeight: 'bold', margin: 0, marginBottom: 30, color: '#000', letterSpacing: '-0.5px' }}>DELIVERY NOTE</h1>
@@ -2207,7 +2207,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
                 </div>
 
                 {/* Delivery Note Details */}
-                <div style={{ marginBottom: 40 }}>
+                <div style={{ marginBottom: 30 }}>
                   <table style={{ fontSize: 13, lineHeight: 2 }}>
                     <tbody>
                       <tr>
@@ -2227,7 +2227,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
                 </div>
 
                 {/* Items Table */}
-                <div style={{ marginBottom: 60 }}>
+                <div style={{ marginBottom: 40 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ borderTop: '2px solid #000', borderBottom: '2px solid #000' }}>
@@ -2257,7 +2257,7 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
                 )}
 
                 {/* Footer with Company Registration */}
-                <div style={{ position: 'absolute', bottom: 40, left: 50, right: 50, fontSize: 9, textAlign: 'center', color: '#000', borderTop: '1px solid #ccc', paddingTop: 10 }}>
+                <div style={{ marginTop: 80, fontSize: 9, textAlign: 'center', color: '#000', borderTop: '1px solid #ccc', paddingTop: 10 }}>
                   Company No: 04813549. Registered Office: Unit 9-10, Twigden Barns, Creaton Road, Creaton, Northamptonshire, NN6 8LU
                 </div>
               </div>

@@ -5,6 +5,48 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Workshop ERP</title>
+    <style>
+      @media print {
+        @page {
+          size: A4;
+          margin: 0;
+        }
+
+        body {
+          margin: 0;
+          padding: 0;
+        }
+
+        .print-preview-modal {
+          position: static !important;
+          background: none !important;
+        }
+
+        .print-preview-toolbar {
+          display: none !important;
+        }
+
+        .print-preview-content {
+          max-width: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+        }
+
+        .label-preview-body {
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+
+        /* Ensure the delivery note content fits A4 */
+        .label-preview-body > div {
+          min-height: 0 !important;
+          padding: 40px 30px !important;
+          page-break-after: avoid;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
