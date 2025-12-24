@@ -2165,13 +2165,14 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
                 {/* Company Address Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 40 }}>
                   <div>
-                    <div style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, color: '#1a1a1a' }}>Your Company Name</div>
+                    <div style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, color: '#1a1a1a' }}>Ultimate Performance</div>
                     <div style={{ fontSize: 13, color: '#555', lineHeight: 1.8 }}>
-                      <div>123 Business Street</div>
-                      <div>Industrial Estate</div>
-                      <div>City, County, POST CODE</div>
-                      <div style={{ marginTop: 4 }}>Tel: 01234 567890</div>
-                      <div>Email: info@yourcompany.com</div>
+                      <div>Units 9 & 10</div>
+                      <div>Twigden Barns</div>
+                      <div>Creaton</div>
+                      <div>NN6 8LU</div>
+                      <div style={{ marginTop: 4 }}>Tel: 01604 505222</div>
+                      <div>Email: office@ultimatep.com</div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
