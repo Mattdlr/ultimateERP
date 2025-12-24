@@ -1413,7 +1413,7 @@ function OrderMaterialsView({ parts, materials }) {
         } else if (item.part.stock_form === 'flat_bar') {
           dimStr = `${dims.width}mm × ${dims.thickness}mm × ${dims.length}mm`;
         } else if (item.part.stock_form === 'plate') {
-          dimStr = `${dims.width}mm × ${dims.height}mm × ${dims.thickness}mm`;
+          dimStr = `${dims.width}mm × ${dims.length}mm × ${dims.thickness}mm`;
         } else if (item.part.stock_form === 'hex_bar') {
           dimStr = `${dims.across_flats}mm A/F × ${dims.length}mm`;
         } else if (item.part.stock_form === 'tube') {
@@ -1577,7 +1577,7 @@ function OrderMaterialsView({ parts, materials }) {
                           } else if (item.part.stock_form === 'flat_bar') {
                             dimStr = `${dims.width}mm × ${dims.thickness}mm × ${dims.length}mm`;
                           } else if (item.part.stock_form === 'plate') {
-                            dimStr = `${dims.width}mm × ${dims.height}mm × ${dims.thickness}mm`;
+                            dimStr = `${dims.width}mm × ${dims.length}mm × ${dims.thickness}mm`;
                           } else if (item.part.stock_form === 'hex_bar') {
                             dimStr = `${dims.across_flats}mm A/F × ${dims.length}mm`;
                           } else if (item.part.stock_form === 'tube') {
