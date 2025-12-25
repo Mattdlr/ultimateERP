@@ -2705,141 +2705,6 @@ function ContactsView({ contacts, projects, parts, onAddContact, onUpdateContact
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
 
-  // Xero integration state
-  const [xeroConnected, setXeroConnected] = useState(false);
-  const [xeroTenantName, setXeroTenantName] = useState(null);
-  const [lastSyncTime, setLastSyncTime] = useState(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-
-  // Check Xero connection status on mount
-  useEffect(() => {
-    checkXeroConnection();
-    fetchLastSyncTime();
-  }, []);
-
-  const checkXeroConnection = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('xero_credentials')
-        .select('tenant_name, expires_at')
-        .single();
-
-      if (data && !error) {
-        setXeroConnected(true);
-        setXeroTenantName(data.tenant_name);
-      }
-    } catch (err) {
-      console.error('Error checking Xero connection:', err);
-    }
-  };
-
-  const fetchLastSyncTime = async () => {
-    try {
-      const { data } = await supabase
-        .from('xero_sync_log')
-        .select('completed_at, status, contacts_synced')
-        .eq('sync_type', 'contacts')
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (data) {
-        setLastSyncTime(data.completed_at);
-      }
-    } catch (err) {
-      // No sync history yet
-    }
-  };
-
-  const handleConnectXero = () => {
-    // Construct Xero OAuth URL
-    const clientId = import.meta.env.VITE_XERO_CLIENT_ID;
-    const redirectUri = import.meta.env.VITE_XERO_REDIRECT_URI;
-    const scope = 'accounting.contacts.read offline_access';
-    const state = Math.random().toString(36).substring(7);
-
-    const authUrl = `https://login.xero.com/identity/connect/authorize?` +
-      `response_type=code&` +
-      `client_id=${clientId}&` +
-      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
-      `scope=${encodeURIComponent(scope)}&` +
-      `state=${state}`;
-
-    window.location.href = authUrl;
-  };
-
-  const handleSyncXero = async () => {
-    setSyncing(true);
-    setSyncStatus('Syncing contacts from Xero...');
-
-    try {
-      const { data, error } = await supabase.functions.invoke('xero-sync-contacts');
-
-      if (error) throw error;
-
-      if (data.success) {
-        setSyncStatus(`Success! Synced ${data.stats.total} contacts (${data.stats.created} new, ${data.stats.updated} updated)`);
-        setLastSyncTime(new Date().toISOString());
-
-        // Refresh contacts list
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      } else {
-        setSyncStatus(`Error: ${data.error}`);
-      }
-    } catch (err) {
-      console.error('Sync error:', err);
-      setSyncStatus(`Error: ${err.message}`);
-    } finally {
-      setSyncing(false);
-      setTimeout(() => setSyncStatus(null), 5000);
-    }
-  };
-
-  const handleDisconnectXero = async () => {
-    if (!confirm('Are you sure you want to disconnect from Xero? Your synced contacts will remain, but you won\'t be able to sync new contacts until you reconnect.')) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('xero_credentials')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
-
-      if (error) throw error;
-
-      setXeroConnected(false);
-      setXeroTenantName(null);
-      alert('Disconnected from Xero successfully');
-    } catch (err) {
-      console.error('Disconnect error:', err);
-      alert('Error disconnecting from Xero');
-    }
-  };
-
-  const formatSyncTime = (timestamp) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
-
   // Filter contacts by role
   const filteredContacts = contacts.filter(contact => {
     const matchesRole = roleFilter === 'all' ||
@@ -2904,77 +2769,14 @@ function ContactsView({ contacts, projects, parts, onAddContact, onUpdateContact
     }
   };
 
-  const getSyncStatusBadge = (contact) => {
-    if (contact.sync_status === 'synced') {
-      return <span style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '2px 6px', borderRadius: '8px', background: 'rgba(52,211,153,0.15)', color: 'var(--accent-green)' }} title="Synced with Xero">Xero</span>;
-    } else if (contact.sync_status === 'pending_push') {
-      return <span style={{ fontSize: '9px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '2px 6px', borderRadius: '8px', background: 'rgba(251,191,36,0.15)', color: '#fbbf24' }} title="Pending sync to Xero">Pending</span>;
-    }
-    return null; // local_only doesn't show badge
-  };
-
   return (
     <>
       <div className="page-header">
         <div>
           <h1 className="page-title">Contacts</h1>
-          <p className="page-subtitle">Manage customers, suppliers, and Xero integration</p>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {xeroConnected ? (
-            <>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                marginRight: 12,
-                fontSize: 13
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-green)' }}>
-                  <span style={{ fontSize: 18 }}>✓</span>
-                  <strong>Connected to Xero</strong>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {xeroTenantName} • Last sync: {formatSyncTime(lastSyncTime)}
-                </div>
-              </div>
-              <button
-                className="btn btn-primary"
-                onClick={handleSyncXero}
-                disabled={syncing}
-              >
-                {syncing ? '⏳ Syncing...' : '🔄 Sync Now'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={handleDisconnectXero}
-                disabled={syncing}
-              >
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <button className="btn btn-primary" onClick={handleConnectXero}>
-              <Icons.Link /> Connect to Xero
-            </button>
-          )}
+          <p className="page-subtitle">Manage customers and suppliers</p>
         </div>
       </div>
-
-      {/* Sync Status Message */}
-      {syncStatus && (
-        <div style={{
-          padding: '12px 16px',
-          borderRadius: 8,
-          background: syncStatus.includes('Error') ? 'rgba(239,68,68,0.1)' : 'rgba(52,211,153,0.1)',
-          border: `1px solid ${syncStatus.includes('Error') ? '#ef4444' : 'var(--accent-green)'}`,
-          color: syncStatus.includes('Error') ? '#ef4444' : 'var(--accent-green)',
-          marginBottom: 16,
-          fontSize: 14
-        }}>
-          {syncStatus}
-        </div>
-      )}
 
       {/* Stats Row */}
       <div className="stats-row">
@@ -3215,10 +3017,7 @@ function ContactsView({ contacts, projects, parts, onAddContact, onUpdateContact
               return (
                 <tr key={contact.id}>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <strong>{contact.name}</strong>
-                      {getSyncStatusBadge(contact)}
-                    </div>
+                    <strong>{contact.name}</strong>
                   </td>
                   <td>{getRoleBadge(contact)}</td>
                   <td>{contact.contact || '-'}</td>
