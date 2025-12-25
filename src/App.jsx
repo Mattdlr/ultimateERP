@@ -1117,7 +1117,7 @@ function MainApp({ user, onLogout }) {
           </nav>
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
-            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} checkins={checkins} checkinItems={checkinItems} deliveryNotes={deliveryNotes} deliveryNoteItems={deliveryNoteItems} parts={parts} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} onAddDeliveryNote={handleAddDeliveryNote} onDeleteDeliveryNote={handleDeleteDeliveryNote} />)}
+            {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} customers={customers} checkins={checkins} checkinItems={checkinItems} deliveryNotes={deliveryNotes} deliveryNoteItems={deliveryNoteItems} parts={parts} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} onAddDeliveryNote={handleAddDeliveryNote} onDeleteDeliveryNote={handleDeleteDeliveryNote} />)}
             {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
             {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
@@ -1848,7 +1848,7 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
 // ============================================
 // PROJECT DETAIL VIEW
 // ============================================
-function ProjectDetailView({ project, customer, checkins, checkinItems, deliveryNotes, deliveryNoteItems, parts, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin, onAddDeliveryNote, onDeleteDeliveryNote }) {
+function ProjectDetailView({ project, customer, customers, checkins, checkinItems, deliveryNotes, deliveryNoteItems, parts, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin, onAddDeliveryNote, onDeleteDeliveryNote }) {
   const [activeTab, setActiveTab] = useState('details');
   const [showAddCheckinModal, setShowAddCheckinModal] = useState(false);
   const [expandedCheckins, setExpandedCheckins] = useState([]);
@@ -1856,6 +1856,8 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
   const [showAddDeliveryNoteModal, setShowAddDeliveryNoteModal] = useState(false);
   const [expandedDeliveryNotes, setExpandedDeliveryNotes] = useState([]);
   const [printingDeliveryNote, setPrintingDeliveryNote] = useState(null);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
 
   // Get check-ins for this project
   const projectCheckins = checkins.filter(c => c.project_id === project.id);
@@ -1903,8 +1905,12 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
     onUpdateProject(project.id, updates);
   };
 
-  const startEdit = () => { setEditData({ title: project.title, due_date: project.due_date, value: project.value }); setIsEditing(true); };
-  const saveEdit = () => { onUpdateProject(project.id, editData); setIsEditing(false); };
+  const startEdit = () => { setEditData({ title: project.title, customer_id: project.customer_id, due_date: project.due_date, value: project.value }); setIsEditing(true); };
+  const saveEdit = () => { onUpdateProject(project.id, editData); setIsEditing(false); setCustomerSearch(''); };
+
+  const selectedEditCustomer = customers.find(c => c.id === editData.customer_id);
+  const filteredCustomers = customerSearch.length > 0 ? customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || (c.contact && c.contact.toLowerCase().includes(customerSearch.toLowerCase()))) : customers;
+  const handleCustomerSelect = (customerId) => { setEditData({ ...editData, customer_id: customerId }); setCustomerSearch(''); setShowCustomerDropdown(false); };
 
   const isOverdue = project.status !== 'completed' && project.due_date && new Date(project.due_date) < new Date();
   const notes = project.project_notes || [];
@@ -1928,7 +1934,24 @@ function ProjectDetailView({ project, customer, checkins, checkinItems, delivery
               {isOverdue && <span style={{ color: '#ef4444', fontSize: 13 }}>⚠️ Overdue</span>}
             </div>
             {isEditing ? (<input type="text" className="form-input" value={editData.title} onChange={e => setEditData({ ...editData, title: e.target.value })} style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }} />) : (<h2 style={{ fontSize: 22, marginBottom: 4 }}>{project.title}</h2>)}
-            <p style={{ color: 'var(--text-secondary)' }}>{customer?.name || 'Unknown Customer'}</p>
+            {isEditing ? (
+              <div style={{ marginTop: 8 }}>
+                {selectedEditCustomer ? (
+                  <div className="autocomplete-selected" style={{ marginBottom: 0 }}>
+                    <span style={{ fontWeight: 500 }}>{selectedEditCustomer.name}</span>
+                    {selectedEditCustomer.contact && (<span style={{ color: 'var(--text-muted)', fontSize: 12 }}>({selectedEditCustomer.contact})</span>)}
+                    <button onClick={() => setEditData({ ...editData, customer_id: '' })}><Icons.X /></button>
+                  </div>
+                ) : (
+                  <div className="autocomplete-container">
+                    <input type="text" className="form-input" placeholder="Start typing to search customers..." value={customerSearch} onChange={e => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }} onFocus={() => setShowCustomerDropdown(true)} onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)} style={{ fontSize: 14 }} />
+                    {showCustomerDropdown && (<div className="autocomplete-dropdown">{filteredCustomers.slice(0, 10).map((cust) => (<div key={cust.id} className="autocomplete-item" onClick={() => handleCustomerSelect(cust.id)}><div className="autocomplete-item-name">{cust.name}</div>{cust.contact && (<div className="autocomplete-item-detail">{cust.contact}</div>)}</div>))}{filteredCustomers.length === 0 && (<div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>No customers found</div>)}</div>)}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)' }}>{customer?.name || 'Unknown Customer'}</p>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {isEditing ? (<><button className="btn btn-primary" onClick={saveEdit}><Icons.Check /> Save</button><button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button></>) : (<><button className="btn btn-secondary" onClick={() => setShowLabelPreview(true)}><Icons.Printer /> Print Label</button><button className="btn btn-secondary" onClick={startEdit}><Icons.Pencil /> Edit</button><button className="btn btn-ghost" onClick={() => { if (confirm('Are you sure you want to delete this project?')) onDeleteProject(project.id); }} style={{ color: '#ef4444' }}><Icons.Trash /></button></>)}
