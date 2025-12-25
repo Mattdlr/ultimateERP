@@ -499,10 +499,13 @@ function MainApp({ user, onLogout }) {
     try {
       const createdProjects = [];
 
+      // Get starting project number and increment for each copy
+      let currentProjectNumber = parseInt(getNextProjectNumber());
+
       // Create the specified number of copies
       for (let i = 0; i < numberOfCopies; i++) {
         const { data, error } = await supabase.from('projects').insert({
-          project_number: getNextProjectNumber(),
+          project_number: String(currentProjectNumber).padStart(4, '0'),
           title: projectData.title,
           customer_id: projectData.customerId,
           date_started: projectData.dateStarted,
@@ -513,6 +516,7 @@ function MainApp({ user, onLogout }) {
 
         if (error) throw error;
         createdProjects.push({ ...data, project_notes: [] });
+        currentProjectNumber++; // Increment for next project
       }
 
       // Update projects list with all new projects
