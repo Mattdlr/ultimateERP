@@ -51,7 +51,7 @@ SELECT
   email,
   phone,
   contact,
-  address,
+  NULL as address, -- Address field is new, will be added later
   true as is_customer, -- Mark as customer
   false as is_supplier,
   'local_only' as sync_status,
