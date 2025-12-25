@@ -1380,9 +1380,7 @@ function OrderMaterialsView({ parts, materials }) {
   };
 
   const updateQuantity = (partId, quantity) => {
-    // Allow empty string during editing, will be set to 1 on blur
-    const value = quantity === '' ? '' : Math.max(1, parseInt(quantity) || 1);
-    setSelectedParts({ ...selectedParts, [partId]: value });
+    setSelectedParts({ ...selectedParts, [partId]: Math.max(1, parseInt(quantity) || 1) });
   };
 
   // Calculate material requirements
@@ -1536,7 +1534,6 @@ function OrderMaterialsView({ parts, materials }) {
                           min="1"
                           value={selectedParts[part.id]}
                           onChange={e => updateQuantity(part.id, e.target.value)}
-                          onBlur={e => { if (e.target.value === '' || parseInt(e.target.value) < 1) updateQuantity(part.id, '1'); }}
                           className="form-input"
                           style={{ width: 80, padding: '4px 8px', fontSize: 13 }}
                         />
@@ -2452,8 +2449,7 @@ function AddCheckinModal({ projectId, onClose, onSave }) {
                       className="form-input"
                       min="1"
                       value={item.quantity}
-                      onChange={e => updateItem(index, 'quantity', e.target.value === '' ? '' : (parseInt(e.target.value) || 1))}
-                      onBlur={e => { if (e.target.value === '' || parseInt(e.target.value) < 1) updateItem(index, 'quantity', 1); }}
+                      onChange={e => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
                     />
                   </div>
                   <button
@@ -2657,8 +2653,7 @@ function AddDeliveryNoteModal({ projectId, parts, checkinItems, onClose, onSave 
                           min="1"
                           step="0.01"
                           value={item.quantity}
-                          onChange={e => updateItem(index, 'quantity', e.target.value === '' ? '' : (parseFloat(e.target.value) || 1))}
-                          onBlur={e => { if (e.target.value === '' || parseFloat(e.target.value) < 1) updateItem(index, 'quantity', 1); }}
+                          onChange={e => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
                         />
                       </div>
                       <button
@@ -3580,12 +3575,11 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
                 min="1"
                 max="10"
                 value={numberOfCopies}
-                onChange={e => setNumberOfCopies(e.target.value === '' ? '' : (parseInt(e.target.value) || 1))}
-                onBlur={e => { if (e.target.value === '' || parseInt(e.target.value) < 1) setNumberOfCopies(1); }}
+                onChange={e => setNumberOfCopies(parseInt(e.target.value) || 1)}
                 style={{ width: 100 }}
               />
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                Create {numberOfCopies || 1} identical project{(numberOfCopies || 1) > 1 ? 's' : ''} with sequential project numbers
+                Create {numberOfCopies} identical project{numberOfCopies > 1 ? 's' : ''} with sequential project numbers
               </div>
             </div>
 
@@ -4613,14 +4607,7 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Quantity *</label>
-                      <input
-                        type="number"
-                        className="form-input"
-                        min="1"
-                        value={newBomItem.quantity}
-                        onChange={e => setNewBomItem({ ...newBomItem, quantity: e.target.value === '' ? '' : (parseInt(e.target.value) || 1) })}
-                        onBlur={e => { if (e.target.value === '' || parseInt(e.target.value) < 1) setNewBomItem({ ...newBomItem, quantity: 1 }); }}
-                      />
+                      <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: parseInt(e.target.value) || 1 })} />
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Position</label>
@@ -4679,8 +4666,7 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
                                 min="1"
                                 step="0.01"
                                 value={editingBomData.quantity}
-                                onChange={e => setEditingBomData({ ...editingBomData, quantity: e.target.value === '' ? '' : (parseFloat(e.target.value) || 1) })}
-                                onBlur={e => { if (e.target.value === '' || parseFloat(e.target.value) < 1) setEditingBomData({ ...editingBomData, quantity: 1 }); }}
+                                onChange={e => setEditingBomData({ ...editingBomData, quantity: parseFloat(e.target.value) || 1 })}
                                 style={{ padding: '6px 10px', fontSize: '13px', width: '80px' }}
                               />
                             </td>
