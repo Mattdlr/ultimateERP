@@ -495,21 +495,38 @@ function MainApp({ user, onLogout }) {
     return String(maxNum + 1).padStart(4, '0');
   };
 
-  const handleAddProject = async (projectData) => {
+  const handleAddProject = async (projectData, numberOfCopies = 1) => {
     try {
-      const { data, error } = await supabase.from('projects').insert({
-        project_number: getNextProjectNumber(),
-        title: projectData.title,
-        customer_id: projectData.customerId,
-        date_started: projectData.dateStarted,
-        due_date: projectData.dueDate,
-        value: parseFloat(projectData.value) || 0,
-        status: 'in-progress'
-      }).select().single();
-      if (error) throw error;
-      setProjects([{ ...data, project_notes: [] }, ...projects]);
-      setShowAddProjectModal(false);
-      showToast(`Project ${data.project_number} created`);
+      const createdProjects = [];
+
+      // Create the specified number of copies
+      for (let i = 0; i < numberOfCopies; i++) {
+        const { data, error } = await supabase.from('projects').insert({
+          project_number: getNextProjectNumber(),
+          title: projectData.title,
+          customer_id: projectData.customerId,
+          date_started: projectData.dateStarted,
+          due_date: projectData.dueDate,
+          value: parseFloat(projectData.value) || 0,
+          status: 'in-progress'
+        }).select().single();
+
+        if (error) throw error;
+        createdProjects.push({ ...data, project_notes: [] });
+      }
+
+      // Update projects list with all new projects
+      setProjects([...createdProjects, ...projects]);
+
+      // Show appropriate toast message
+      if (numberOfCopies === 1) {
+        showToast(`Project ${createdProjects[0].project_number} created`);
+      } else {
+        const projectNumbers = createdProjects.map(p => p.project_number).join(', ');
+        showToast(`${numberOfCopies} projects created: ${projectNumbers}`);
+      }
+
+      // Don't close modal here - let the modal handle it based on "create another" checkbox
     } catch (err) {
       console.error('Error adding project:', err);
       showToast('Error creating project', 'error');
@@ -2974,12 +2991,38 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [numberOfCopies, setNumberOfCopies] = useState(1);
+  const [createAnother, setCreateAnother] = useState(false);
 
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const filteredCustomers = customerSearch.length > 0 ? customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || (c.contact && c.contact.toLowerCase().includes(customerSearch.toLowerCase()))) : customers;
 
   const handleCustomerSelect = (customer) => { setFormData({ ...formData, customerId: customer.id }); setCustomerSearch(''); setShowDropdown(false); };
-  const handleSubmit = () => { if (!formData.title || !formData.customerId || !formData.dueDate) { alert('Please fill in all required fields'); return; } onSave(formData); };
+
+  const handleSubmit = () => {
+    if (!formData.title || !formData.customerId || !formData.dueDate) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    // Save the project (or multiple copies)
+    onSave(formData, numberOfCopies);
+
+    // If "Create Another" is checked, reset form but keep customer
+    if (createAnother) {
+      setFormData({
+        title: '',
+        customerId: formData.customerId,
+        dateStarted: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        value: ''
+      });
+      setNumberOfCopies(1);
+      setCreateAnother(false);
+    } else {
+      onClose();
+    }
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -3002,8 +3045,42 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
             <div className="form-group"><label className="form-label">Due Date *</label><input type="date" className="form-input" value={formData.dueDate} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} /></div>
           </div>
           <div className="form-group"><label className="form-label">Value (£)</label><input type="number" className="form-input" placeholder="0.00" min="0" step="0.01" value={formData.value} onChange={e => setFormData({ ...formData, value: e.target.value })} /></div>
+
+          {/* Duplication Options */}
+          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 20, marginTop: 20 }}>
+            <div className="form-group">
+              <label className="form-label">Number of Copies</label>
+              <input
+                type="number"
+                className="form-input"
+                min="1"
+                max="10"
+                value={numberOfCopies}
+                onChange={e => setNumberOfCopies(parseInt(e.target.value) || 1)}
+                style={{ width: 100 }}
+              />
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Create {numberOfCopies} identical project{numberOfCopies > 1 ? 's' : ''} with sequential project numbers
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+                <input
+                  type="checkbox"
+                  checked={createAnother}
+                  onChange={e => setCreateAnother(e.target.checked)}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+                <span>Create another project with this customer after saving</span>
+              </label>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4, marginLeft: 24 }}>
+                Keep modal open and reset form for creating similar projects
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={handleSubmit}><Icons.Check /> Create Project</button></div>
+        <div className="modal-footer"><button className="btn btn-secondary" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={handleSubmit}><Icons.Check /> Create Project{numberOfCopies > 1 ? 's' : ''}</button></div>
       </div>
     </div>
   );
