@@ -1672,7 +1672,7 @@ function ProjectsView({ projects, customers, getCustomer, onSelectProject, onAdd
     const matchesCustomer = !customerFilter || project.customer_id === customerFilter;
     const matchesSearch = !searchQuery || project.title.toLowerCase().includes(searchQuery.toLowerCase()) || project.project_number.includes(searchQuery) || getCustomer(project.customer_id)?.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesCustomer && matchesSearch;
-  }).sort((a, b) => new Date(a.date_started) - new Date(b.date_started));
+  }).sort((a, b) => a.project_number.localeCompare(b.project_number));
 
   const stats = {
     total: projects.length,
@@ -3012,8 +3012,12 @@ function AddProjectModal({ customers, nextProjectNumber, onClose, onSave }) {
     // Save the project (or multiple copies)
     onSave(formData, numberOfCopies);
 
-    // If "Create Another" is checked, reset form but keep customer
-    if (createAnother) {
+    // If creating multiple projects, always close
+    if (numberOfCopies > 1) {
+      onClose();
+    }
+    // If "Create Another" is checked (and creating single project), reset form but keep customer
+    else if (createAnother) {
       setFormData({
         title: '',
         customerId: formData.customerId,
