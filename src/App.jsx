@@ -415,7 +415,7 @@ function LoginPage({ onLogin }) {
 function MainApp({ user, onLogout }) {
   const [activeView, setActiveView] = useState('projects');
   const [projects, setProjects] = useState([]);
-  const [customers, setCustomers] = useState([]);
+  const [contacts, setContacts] = useState([]); // Unified contacts (replaces customers and suppliers)
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -424,7 +424,6 @@ function MainApp({ user, onLogout }) {
 
   // Parts management state
   const [parts, setParts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [machines, setMachines] = useState([]);
   const [bomRelations, setBomRelations] = useState([]);
@@ -451,9 +450,8 @@ function MainApp({ user, onLogout }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: customersData } = await supabase.from('customers').select('*').order('name');
+      const { data: contactsData } = await supabase.from('contacts').select('*').order('name');
       const { data: projectsData } = await supabase.from('projects').select('*, project_notes (*)').order('project_number', { ascending: false });
-      const { data: suppliersData } = await supabase.from('suppliers').select('*').order('name');
       const { data: materialsData } = await supabase.from('materials').select('*').order('name');
       const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
       const { data: machinesData } = await supabase.from('machines').select('*').order('name');
@@ -465,9 +463,8 @@ function MainApp({ user, onLogout }) {
       const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
       const { data: partRevisionsData } = await supabase.from('part_revisions').select('*').order('created_at', { ascending: false });
 
-      setCustomers(customersData || []);
+      setContacts(contactsData || []);
       setProjects(projectsData || []);
-      setSuppliers(suppliersData || []);
       setMaterials(materialsData || []);
       setParts(partsData || []);
       setMachines(machinesData || []);
@@ -485,7 +482,11 @@ function MainApp({ user, onLogout }) {
     setLoading(false);
   };
 
-  const getCustomer = (customerId) => customers.find(c => c.id === customerId);
+  // Helper functions to get contacts by role
+  const customers = contacts.filter(c => c.is_customer && !c.deleted_at);
+  const suppliers = contacts.filter(c => c.is_supplier && !c.deleted_at);
+  const getCustomer = (customerId) => contacts.find(c => c.id === customerId);
+  const getSupplier = (supplierId) => contacts.find(c => c.id === supplierId);
 
   const getNextProjectNumber = () => {
     const maxNum = projects.reduce((max, p) => {
@@ -577,84 +578,73 @@ function MainApp({ user, onLogout }) {
     }
   };
 
-  const handleAddCustomer = async (customerData) => {
-    try {
-      const { data, error } = await supabase.from('customers').insert(customerData).select().single();
-      if (error) throw error;
-      setCustomers([...customers, data].sort((a, b) => a.name.localeCompare(b.name)));
-      showToast('Customer added');
-    } catch (err) {
-      console.error('Error adding customer:', err);
-      showToast('Error adding customer', 'error');
-    }
-  };
-
-  const handleUpdateCustomer = async (customerId, updates) => {
-    try {
-      const { error } = await supabase.from('customers').update(updates).eq('id', customerId);
-      if (error) throw error;
-      setCustomers(customers.map(c => c.id === customerId ? { ...c, ...updates } : c));
-      showToast('Customer updated');
-    } catch (err) {
-      console.error('Error updating customer:', err);
-      showToast('Error updating customer', 'error');
-    }
-  };
-
-  const handleDeleteCustomer = async (customerId) => {
-    const inUse = projects.some(p => p.customer_id === customerId);
-    if (inUse) { showToast('Cannot delete: customer has projects', 'error'); return; }
-    try {
-      const { error } = await supabase.from('customers').update({ deleted_at: new Date().toISOString() }).eq('id', customerId);
-      if (error) throw error;
-      setCustomers(customers.filter(c => c.id !== customerId));
-      showToast('Customer deleted');
-    } catch (err) {
-      console.error('Error deleting customer:', err);
-      showToast('Error deleting customer', 'error');
-    }
-  };
-
   // ============================================
-  // SUPPLIERS HANDLERS
+  // CONTACTS HANDLERS (Unified customers and suppliers)
   // ============================================
-  const handleAddSupplier = async (supplierData) => {
+  const handleAddContact = async (contactData) => {
     try {
-      const { data, error } = await supabase.from('suppliers').insert(supplierData).select().single();
+      const { data, error} = await supabase.from('contacts').insert({
+        ...contactData,
+        sync_status: 'local_only' // Default to local-only for new contacts
+      }).select().single();
       if (error) throw error;
-      setSuppliers([...suppliers, data].sort((a, b) => a.name.localeCompare(b.name)));
-      showToast('Supplier added');
+      setContacts([...contacts, data].sort((a, b) => a.name.localeCompare(b.name)));
+      const roleLabel = data.is_customer && data.is_supplier ? 'Contact' : data.is_customer ? 'Customer' : 'Supplier';
+      showToast(`${roleLabel} added`);
     } catch (err) {
-      console.error('Error adding supplier:', err);
-      showToast('Error adding supplier', 'error');
+      console.error('Error adding contact:', err);
+      showToast('Error adding contact', 'error');
     }
   };
 
-  const handleUpdateSupplier = async (supplierId, updates) => {
+  const handleUpdateContact = async (contactId, updates) => {
     try {
-      const { error } = await supabase.from('suppliers').update(updates).eq('id', supplierId);
+      const { error } = await supabase.from('contacts').update(updates).eq('id', contactId);
       if (error) throw error;
-      setSuppliers(suppliers.map(s => s.id === supplierId ? { ...s, ...updates } : s));
-      showToast('Supplier updated');
+      setContacts(contacts.map(c => c.id === contactId ? { ...c, ...updates } : c));
+      showToast('Contact updated');
     } catch (err) {
-      console.error('Error updating supplier:', err);
-      showToast('Error updating supplier', 'error');
+      console.error('Error updating contact:', err);
+      showToast('Error updating contact', 'error');
     }
   };
 
-  const handleDeleteSupplier = async (supplierId) => {
-    const inUse = parts.some(p => p.supplier_id === supplierId);
-    if (inUse) { showToast('Cannot delete: supplier has parts', 'error'); return; }
+  const handleDeleteContact = async (contactId) => {
+    const contact = contacts.find(c => c.id === contactId);
+    const inUseAsCustomer = contact?.is_customer && projects.some(p => p.customer_id === contactId);
+    const inUseAsSupplier = contact?.is_supplier && parts.some(p => p.supplier_id === contactId);
+
+    if (inUseAsCustomer && inUseAsSupplier) {
+      showToast('Cannot delete: contact has projects and parts', 'error');
+      return;
+    }
+    if (inUseAsCustomer) {
+      showToast('Cannot delete: contact has projects', 'error');
+      return;
+    }
+    if (inUseAsSupplier) {
+      showToast('Cannot delete: contact has parts', 'error');
+      return;
+    }
+
     try {
-      const { error } = await supabase.from('suppliers').update({ deleted_at: new Date().toISOString() }).eq('id', supplierId);
+      const { error } = await supabase.from('contacts').update({ deleted_at: new Date().toISOString() }).eq('id', contactId);
       if (error) throw error;
-      setSuppliers(suppliers.filter(s => s.id !== supplierId));
-      showToast('Supplier deleted');
+      setContacts(contacts.filter(c => c.id !== contactId));
+      showToast('Contact deleted');
     } catch (err) {
-      console.error('Error deleting supplier:', err);
-      showToast('Error deleting supplier', 'error');
+      console.error('Error deleting contact:', err);
+      showToast('Error deleting contact', 'error');
     }
   };
+
+  // Legacy function names for backwards compatibility
+  const handleAddCustomer = handleAddContact;
+  const handleUpdateCustomer = handleUpdateContact;
+  const handleDeleteCustomer = handleDeleteContact;
+  const handleAddSupplier = handleAddContact;
+  const handleUpdateSupplier = handleUpdateContact;
+  const handleDeleteSupplier = handleDeleteContact;
 
   // ============================================
   // MATERIALS HANDLERS
