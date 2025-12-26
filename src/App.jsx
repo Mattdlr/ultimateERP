@@ -1,9 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
 import Icons from './components/common/Icons';
 import StockCalculations from './utils/stockCalculations';
 import PartNumberUtils from './utils/partNumberUtils';
 import './styles/global.css';
+
+// Import services
+import authService from './services/authService';
+import projectService from './services/projectService';
+import contactService from './services/contactService';
+import partService from './services/partService';
+import materialService from './services/materialService';
+import machineService from './services/machineService';
+import bomService from './services/bomService';
+import operationService from './services/operationService';
 
 // Import extracted view components
 import ProjectDetailView from './views/ProjectDetailView';
@@ -221,7 +230,7 @@ function LoginPage({ onLogin }) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: authError } = await authService.signIn(email, password);
     if (authError) {
       setError(authError.message);
       setLoading(false);
@@ -298,18 +307,18 @@ function MainApp({ user, onLogout }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: contactsData } = await supabase.from('contacts').select('*').order('name');
-      const { data: projectsData } = await supabase.from('projects').select('*, project_notes (*)').order('project_number', { ascending: false });
-      const { data: materialsData } = await supabase.from('materials').select('*').order('name');
-      const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
-      const { data: machinesData } = await supabase.from('machines').select('*').order('name');
-      const { data: bomData } = await supabase.from('bom_relations').select('*');
-      const { data: operationsData } = await supabase.from('operations').select('*');
-      const { data: checkinsData } = await supabase.from('project_checkins').select('*').order('checkin_date', { ascending: false });
-      const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
-      const { data: deliveryNotesData } = await supabase.from('delivery_notes').select('*').order('delivery_date', { ascending: false });
-      const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
-      const { data: partRevisionsData } = await supabase.from('part_revisions').select('*').order('created_at', { ascending: false });
+      const { data: contactsData } = await contactService.getAll();
+      const { data: projectsData } = await projectService.getAll();
+      const { data: materialsData } = await materialService.getAll();
+      const { data: partsData } = await partService.getAll();
+      const { data: machinesData } = await machineService.getAll();
+      const { data: bomData } = await bomService.getAll();
+      const { data: operationsData } = await operationService.getAll();
+      const { data: checkinsData } = await projectService.getCheckins();
+      const { data: checkinItemsData } = await projectService.getCheckinItems();
+      const { data: deliveryNotesData } = await projectService.getDeliveryNotes();
+      const { data: deliveryNoteItemsData } = await projectService.getDeliveryNoteItems();
+      const { data: partRevisionsData } = await partService.getRevisions();
 
       setContacts(contactsData || []);
       setProjects(projectsData || []);
@@ -353,7 +362,7 @@ function MainApp({ user, onLogout }) {
 
       // Create the specified number of copies
       for (let i = 0; i < numberOfCopies; i++) {
-        const { data, error } = await supabase.from('projects').insert({
+        const { data, error } = await projectService.create({
           project_number: String(currentProjectNumber).padStart(4, '0'),
           title: projectData.title,
           customer_id: projectData.customerId,
@@ -361,7 +370,7 @@ function MainApp({ user, onLogout }) {
           due_date: projectData.dueDate,
           value: parseFloat(projectData.value) || 0,
           status: 'in-progress'
-        }).select().single();
+        });
 
         if (error) throw error;
         createdProjects.push({ ...data, project_notes: [] });
@@ -388,7 +397,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateProject = async (projectId, updates) => {
     try {
-      const { error } = await supabase.from('projects').update(updates).eq('id', projectId);
+      const { error } = await projectService.update(projectId, updates);
       if (error) throw error;
       setProjects(projects.map(p => p.id === projectId ? { ...p, ...updates } : p));
       if (selectedProject?.id === projectId) setSelectedProject({ ...selectedProject, ...updates });
@@ -401,7 +410,7 @@ function MainApp({ user, onLogout }) {
 
   const handleAddNote = async (projectId, text) => {
     try {
-      const { data, error } = await supabase.from('project_notes').insert({ project_id: projectId, text: text, created_by: user.id, created_by_email: user.email }).select().single();
+      const { data, error } = await projectService.addNote(projectId, text, user.id, user.email);
       if (error) throw error;
       const updatedProjects = projects.map(p => p.id === projectId ? { ...p, project_notes: [...(p.project_notes || []), data] } : p);
       setProjects(updatedProjects);
@@ -415,7 +424,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteProject = async (projectId) => {
     try {
-      const { error } = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', projectId);
+      const { error } = await projectService.delete(projectId);
       if (error) throw error;
       setProjects(projects.filter(p => p.id !== projectId));
       setSelectedProject(null);
@@ -431,7 +440,7 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddContact = async (contactData) => {
     try {
-      const { data, error} = await supabase.from('contacts').insert({
+      const { data, error} = await contactService.create({
         ...contactData,
         sync_status: 'local_only' // Default to local-only for new contacts
       }).select().single();
@@ -447,7 +456,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateContact = async (contactId, updates) => {
     try {
-      const { error } = await supabase.from('contacts').update(updates).eq('id', contactId);
+      const { error } = await contactService.update(contactId, updates);
       if (error) throw error;
       setContacts(contacts.map(c => c.id === contactId ? { ...c, ...updates } : c));
       showToast('Contact updated');
@@ -476,7 +485,7 @@ function MainApp({ user, onLogout }) {
     }
 
     try {
-      const { error } = await supabase.from('contacts').update({ deleted_at: new Date().toISOString() }).eq('id', contactId);
+      const { error } = await contactService.delete(contactId);
       if (error) throw error;
       setContacts(contacts.filter(c => c.id !== contactId));
       showToast('Contact deleted');
@@ -499,7 +508,7 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddMaterial = async (materialData) => {
     try {
-      const { data, error } = await supabase.from('materials').insert(materialData).select().single();
+      const { data, error } = await materialService.create(materialData);
       if (error) throw error;
       setMaterials([...materials, data].sort((a, b) => a.name.localeCompare(b.name)));
       showToast('Material added');
@@ -511,7 +520,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateMaterial = async (materialId, updates) => {
     try {
-      const { error } = await supabase.from('materials').update(updates).eq('id', materialId);
+      const { error } = await materialService.update(materialId, updates);
       if (error) throw error;
       setMaterials(materials.map(m => m.id === materialId ? { ...m, ...updates } : m));
       showToast('Material updated');
@@ -525,7 +534,7 @@ function MainApp({ user, onLogout }) {
     const inUse = parts.some(p => p.stock_material_id === materialId);
     if (inUse) { showToast('Cannot delete: material is in use', 'error'); return; }
     try {
-      const { error } = await supabase.from('materials').update({ deleted_at: new Date().toISOString() }).eq('id', materialId);
+      const { error } = await materialService.delete(materialId);
       if (error) throw error;
       setMaterials(materials.filter(m => m.id !== materialId));
       showToast('Material deleted');
@@ -564,7 +573,7 @@ function MainApp({ user, onLogout }) {
         }
       }
 
-      const { data, error } = await supabase.from('parts').insert(cleanData).select().single();
+      const { data, error } = await partService.create(cleanData);
       if (error) throw error;
       setParts([data, ...parts]);
       setShowAddPartModal(false);
@@ -577,7 +586,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdatePart = async (partId, updates) => {
     try {
-      const { error } = await supabase.from('parts').update(updates).eq('id', partId);
+      const { error } = await partService.update(partId, updates);
       if (error) throw error;
       setParts(parts.map(p => p.id === partId ? { ...p, ...updates } : p));
       if (selectedPart?.id === partId) setSelectedPart({ ...selectedPart, ...updates });
@@ -590,7 +599,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeletePart = async (partId) => {
     try {
-      const { error } = await supabase.from('parts').update({ deleted_at: new Date().toISOString() }).eq('id', partId);
+      const { error } = await partService.delete(partId);
       if (error) throw error;
       setParts(parts.filter(p => p.id !== partId));
       setSelectedPart(null);
@@ -614,9 +623,9 @@ function MainApp({ user, onLogout }) {
     }
 
     try {
-      // First, save the current revision to the part_revisions table
+      // Prepare revision snapshot
       const currentRevision = part.part_number.split('-').pop() || '00';
-      const { error: revisionError } = await supabase.from('part_revisions').insert({
+      const revisionSnapshot = {
         part_id: part.id,
         revision_number: currentRevision,
         part_number: part.part_number,
@@ -630,15 +639,14 @@ function MainApp({ user, onLogout }) {
         stock_form: part.stock_form,
         stock_dimensions: part.stock_dimensions,
         created_by: user.id
-      });
+      };
 
-      if (revisionError) throw revisionError;
-
-      // Then update the part with new revision number and notes
-      const { error } = await supabase.from('parts').update({
-        part_number: newPartNumber,
-        revision_notes: revisionNotes.trim()
-      }).eq('id', part.id);
+      const { error } = await partService.incrementRevision(
+        part.id,
+        revisionSnapshot,
+        newPartNumber,
+        revisionNotes.trim()
+      );
 
       if (error) throw error;
 
@@ -659,7 +667,7 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddBomItem = async (parentId, childId, quantity, position) => {
     try {
-      const { data, error } = await supabase.from('bom_relations').insert({
+      const { data, error } = await bomService.create({
         parent_id: parentId,
         child_id: childId,
         quantity: quantity || 1,
@@ -676,7 +684,7 @@ function MainApp({ user, onLogout }) {
 
   const handleRemoveBomItem = async (bomId) => {
     try {
-      const { error } = await supabase.from('bom_relations').delete().eq('id', bomId);
+      const { error } = await bomService.delete(bomId);
       if (error) throw error;
       setBomRelations(bomRelations.filter(b => b.id !== bomId));
       showToast('BOM item removed');
@@ -688,7 +696,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateBomItem = async (bomId, updates) => {
     try {
-      const { error } = await supabase.from('bom_relations').update(updates).eq('id', bomId);
+      const { error } = await bomService.update(bomId, updates);
       if (error) throw error;
       setBomRelations(bomRelations.map(b => b.id === bomId ? { ...b, ...updates } : b));
       showToast('BOM item updated');
@@ -703,7 +711,7 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddMachine = async (machineData) => {
     try {
-      const { data, error } = await supabase.from('machines').insert(machineData).select().single();
+      const { data, error } = await machineService.create(machineData);
       if (error) throw error;
       setMachines([...machines, data].sort((a, b) => a.name.localeCompare(b.name)));
       showToast('Machine added');
@@ -715,7 +723,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateMachine = async (machineId, updates) => {
     try {
-      const { error } = await supabase.from('machines').update(updates).eq('id', machineId);
+      const { error } = await machineService.update(machineId, updates);
       if (error) throw error;
       setMachines(machines.map(m => m.id === machineId ? { ...m, ...updates } : m));
       showToast('Machine updated');
@@ -727,7 +735,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteMachine = async (machineId) => {
     try {
-      const { error } = await supabase.from('machines').update({ deleted_at: new Date().toISOString() }).eq('id', machineId);
+      const { error } = await machineService.delete(machineId);
       if (error) throw error;
       setMachines(machines.filter(m => m.id !== machineId));
       showToast('Machine deleted');
@@ -742,7 +750,7 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddOperation = async (operationData) => {
     try {
-      const { data, error } = await supabase.from('operations').insert(operationData).select().single();
+      const { data, error } = await operationService.create(operationData);
       if (error) throw error;
       setOperations([...operations, data]);
       showToast('Operation added');
@@ -754,7 +762,7 @@ function MainApp({ user, onLogout }) {
 
   const handleUpdateOperation = async (opId, updates) => {
     try {
-      const { error } = await supabase.from('operations').update(updates).eq('id', opId);
+      const { error } = await operationService.update(opId, updates);
       if (error) throw error;
       setOperations(operations.map(op => op.id === opId ? { ...op, ...updates } : op));
       showToast('Operation updated');
@@ -766,7 +774,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteOperation = async (opId) => {
     try {
-      const { error } = await supabase.from('operations').update({ deleted_at: new Date().toISOString() }).eq('id', opId);
+      const { error } = await operationService.delete(opId);
       if (error) throw error;
       setOperations(operations.filter(op => op.id !== opId));
       showToast('Operation deleted');
@@ -820,7 +828,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteCheckin = async (checkinId) => {
     try {
-      const { error } = await supabase.from('project_checkins').update({ deleted_at: new Date().toISOString() }).eq('id', checkinId);
+      const { error } = await projectService.deleteCheckin(checkinId);
       if (error) throw error;
       setCheckins(checkins.filter(c => c.id !== checkinId));
       setCheckinItems(checkinItems.filter(item => item.checkin_id !== checkinId));
@@ -886,7 +894,7 @@ function MainApp({ user, onLogout }) {
 
   const handleDeleteDeliveryNote = async (deliveryNoteId) => {
     try {
-      const { error } = await supabase.from('delivery_notes').update({ deleted_at: new Date().toISOString() }).eq('id', deliveryNoteId);
+      const { error } = await projectService.deleteDeliveryNote(deliveryNoteId);
       if (error) throw error;
       setDeliveryNotes(deliveryNotes.filter(dn => dn.id !== deliveryNoteId));
       setDeliveryNoteItems(deliveryNoteItems.filter(item => item.delivery_note_id !== deliveryNoteId));
@@ -1616,12 +1624,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { setUser(session?.user ?? null); setLoading(false); });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => { setUser(session?.user ?? null); });
+    authService.getSession().then(({ session }) => { setUser(session?.user ?? null); setLoading(false); });
+    const subscription = authService.onAuthStateChange((_event, session) => { setUser(session?.user ?? null); });
     return () => subscription.unsubscribe();
   }, []);
 
-  const handleLogout = async () => { await supabase.auth.signOut(); setUser(null); };
+  const handleLogout = async () => { await authService.signOut(); setUser(null); };
 
   if (loading) return (<><style>{styles}</style><div className="loading-container"><div className="spinner"></div><p style={{ color: '#a1a1a6' }}>Loading...</p></div></>);
   if (!user) return (<><style>{styles}</style><LoginPage onLogin={setUser} /></>);
