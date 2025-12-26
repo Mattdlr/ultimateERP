@@ -415,8 +415,7 @@ function LoginPage({ onLogin }) {
 function MainApp({ user, onLogout }) {
   const [activeView, setActiveView] = useState('projects');
   const [projects, setProjects] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
+  const [contacts, setContacts] = useState([]); // Unified contacts (replaces customers and suppliers)
   const [selectedProject, setSelectedProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -429,6 +428,7 @@ function MainApp({ user, onLogout }) {
   const [machines, setMachines] = useState([]);
   const [bomRelations, setBomRelations] = useState([]);
   const [operations, setOperations] = useState([]);
+  const [partRevisions, setPartRevisions] = useState([]);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
@@ -450,26 +450,26 @@ function MainApp({ user, onLogout }) {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: customersData } = await supabase.from('customers').select('*').order('name');
-      const { data: suppliersData } = await supabase.from('suppliers').select('*').order('name');
+      const { data: contactsData } = await supabase.from('contacts').select('*').order('name');
       const { data: projectsData } = await supabase.from('projects').select('*, project_notes (*)').order('project_number', { ascending: false });
       const { data: materialsData } = await supabase.from('materials').select('*').order('name');
       const { data: partsData } = await supabase.from('parts').select('*').order('part_number');
       const { data: machinesData } = await supabase.from('machines').select('*').order('name');
       const { data: bomData } = await supabase.from('bom_relations').select('*');
       const { data: operationsData } = await supabase.from('operations').select('*');
-      const { data: checkinsData } = await supabase.from('checkins').select('*').order('checkin_date', { ascending: false });
+      const { data: checkinsData } = await supabase.from('project_checkins').select('*').order('checkin_date', { ascending: false });
       const { data: checkinItemsData } = await supabase.from('checkin_items').select('*');
       const { data: deliveryNotesData } = await supabase.from('delivery_notes').select('*').order('delivery_date', { ascending: false });
       const { data: deliveryNoteItemsData } = await supabase.from('delivery_note_items').select('*');
+      const { data: partRevisionsData } = await supabase.from('part_revisions').select('*').order('created_at', { ascending: false });
 
-      setCustomers(customersData || []);
-      setSuppliers(suppliersData || []);
+      setContacts(contactsData || []);
       setProjects(projectsData || []);
       setMaterials(materialsData || []);
       setParts(partsData || []);
       setMachines(machinesData || []);
       setBomRelations(bomData || []);
+      setPartRevisions(partRevisionsData || []);
       setOperations(operationsData || []);
       setCheckins(checkinsData || []);
       setCheckinItems(checkinItemsData || []);
@@ -482,9 +482,11 @@ function MainApp({ user, onLogout }) {
     setLoading(false);
   };
 
-  // Helper functions to get customer/supplier by ID
-  const getCustomer = (customerId) => customers.find(c => c.id === customerId);
-  const getSupplier = (supplierId) => suppliers.find(s => s.id === supplierId);
+  // Helper functions to get contacts by role
+  const customers = contacts.filter(c => c.is_customer && !c.deleted_at);
+  const suppliers = contacts.filter(c => c.is_supplier && !c.deleted_at);
+  const getCustomer = (customerId) => contacts.find(c => c.id === customerId);
+  const getSupplier = (supplierId) => contacts.find(c => c.id === supplierId);
 
   const getNextProjectNumber = () => {
     const maxNum = projects.reduce((max, p) => {
@@ -577,92 +579,72 @@ function MainApp({ user, onLogout }) {
   };
 
   // ============================================
-  // CUSTOMER HANDLERS
+  // CONTACTS HANDLERS (Unified customers and suppliers)
   // ============================================
-  const handleAddCustomer = async (customerData) => {
+  const handleAddContact = async (contactData) => {
     try {
-      const { data, error } = await supabase.from('customers').insert(customerData).select().single();
+      const { data, error} = await supabase.from('contacts').insert({
+        ...contactData,
+        sync_status: 'local_only' // Default to local-only for new contacts
+      }).select().single();
       if (error) throw error;
-      setCustomers([...customers, data].sort((a, b) => a.name.localeCompare(b.name)));
-      showToast('Customer added');
+      setContacts([...contacts, data].sort((a, b) => a.name.localeCompare(b.name)));
+      const roleLabel = data.is_customer && data.is_supplier ? 'Contact' : data.is_customer ? 'Customer' : 'Supplier';
+      showToast(`${roleLabel} added`);
     } catch (err) {
-      console.error('Error adding customer:', err);
-      showToast('Error adding customer', 'error');
+      console.error('Error adding contact:', err);
+      showToast('Error adding contact', 'error');
     }
   };
 
-  const handleUpdateCustomer = async (customerId, updates) => {
+  const handleUpdateContact = async (contactId, updates) => {
     try {
-      const { error } = await supabase.from('customers').update(updates).eq('id', customerId);
+      const { error } = await supabase.from('contacts').update(updates).eq('id', contactId);
       if (error) throw error;
-      setCustomers(customers.map(c => c.id === customerId ? { ...c, ...updates } : c));
-      showToast('Customer updated');
+      setContacts(contacts.map(c => c.id === contactId ? { ...c, ...updates } : c));
+      showToast('Contact updated');
     } catch (err) {
-      console.error('Error updating customer:', err);
-      showToast('Error updating customer', 'error');
+      console.error('Error updating contact:', err);
+      showToast('Error updating contact', 'error');
     }
   };
 
-  const handleDeleteCustomer = async (customerId) => {
-    const inUse = projects.some(p => p.customer_id === customerId);
-    if (inUse) {
-      showToast('Cannot delete: customer has projects', 'error');
+  const handleDeleteContact = async (contactId) => {
+    const contact = contacts.find(c => c.id === contactId);
+    const inUseAsCustomer = contact?.is_customer && projects.some(p => p.customer_id === contactId);
+    const inUseAsSupplier = contact?.is_supplier && parts.some(p => p.supplier_id === contactId);
+
+    if (inUseAsCustomer && inUseAsSupplier) {
+      showToast('Cannot delete: contact has projects and parts', 'error');
       return;
     }
-    try {
-      const { error } = await supabase.from('customers').update({ deleted_at: new Date().toISOString() }).eq('id', customerId);
-      if (error) throw error;
-      setCustomers(customers.filter(c => c.id !== customerId));
-      showToast('Customer deleted');
-    } catch (err) {
-      console.error('Error deleting customer:', err);
-      showToast('Error deleting customer', 'error');
-    }
-  };
-
-  // ============================================
-  // SUPPLIER HANDLERS
-  // ============================================
-  const handleAddSupplier = async (supplierData) => {
-    try {
-      const { data, error } = await supabase.from('suppliers').insert(supplierData).select().single();
-      if (error) throw error;
-      setSuppliers([...suppliers, data].sort((a, b) => a.name.localeCompare(b.name)));
-      showToast('Supplier added');
-    } catch (err) {
-      console.error('Error adding supplier:', err);
-      showToast('Error adding supplier', 'error');
-    }
-  };
-
-  const handleUpdateSupplier = async (supplierId, updates) => {
-    try {
-      const { error } = await supabase.from('suppliers').update(updates).eq('id', supplierId);
-      if (error) throw error;
-      setSuppliers(suppliers.map(s => s.id === supplierId ? { ...s, ...updates } : s));
-      showToast('Supplier updated');
-    } catch (err) {
-      console.error('Error updating supplier:', err);
-      showToast('Error updating supplier', 'error');
-    }
-  };
-
-  const handleDeleteSupplier = async (supplierId) => {
-    const inUse = parts.some(p => p.supplier_id === supplierId);
-    if (inUse) {
-      showToast('Cannot delete: supplier has parts', 'error');
+    if (inUseAsCustomer) {
+      showToast('Cannot delete: contact has projects', 'error');
       return;
     }
+    if (inUseAsSupplier) {
+      showToast('Cannot delete: contact has parts', 'error');
+      return;
+    }
+
     try {
-      const { error } = await supabase.from('suppliers').update({ deleted_at: new Date().toISOString() }).eq('id', supplierId);
+      const { error } = await supabase.from('contacts').update({ deleted_at: new Date().toISOString() }).eq('id', contactId);
       if (error) throw error;
-      setSuppliers(suppliers.filter(s => s.id !== supplierId));
-      showToast('Supplier deleted');
+      setContacts(contacts.filter(c => c.id !== contactId));
+      showToast('Contact deleted');
     } catch (err) {
-      console.error('Error deleting supplier:', err);
-      showToast('Error deleting supplier', 'error');
+      console.error('Error deleting contact:', err);
+      showToast('Error deleting contact', 'error');
     }
   };
+
+  // Legacy function names for backwards compatibility
+  const handleAddCustomer = handleAddContact;
+  const handleUpdateCustomer = handleUpdateContact;
+  const handleDeleteCustomer = handleDeleteContact;
+  const handleAddSupplier = handleAddContact;
+  const handleUpdateSupplier = handleUpdateContact;
+  const handleDeleteSupplier = handleDeleteContact;
 
   // ============================================
   // MATERIALS HANDLERS
@@ -768,6 +750,59 @@ function MainApp({ user, onLogout }) {
     } catch (err) {
       console.error('Error deleting part:', err);
       showToast('Error deleting part', 'error');
+    }
+  };
+
+  const handleIncrementRevision = async (part) => {
+    const newPartNumber = PartNumberUtils.incrementRevision(part.part_number);
+    if (!newPartNumber) {
+      showToast('Invalid part number format', 'error');
+      return;
+    }
+
+    const revisionNotes = prompt(`Increment revision from ${part.part_number} to ${newPartNumber}?\n\nEnter revision notes (e.g., "Updated main diameter", "Material change"):`, '');
+    if (revisionNotes === null) {
+      return; // User cancelled
+    }
+
+    try {
+      // First, save the current revision to the part_revisions table
+      const currentRevision = part.part_number.split('-').pop() || '00';
+      const { error: revisionError } = await supabase.from('part_revisions').insert({
+        part_id: part.id,
+        revision_number: currentRevision,
+        part_number: part.part_number,
+        description: part.description,
+        finished_weight: part.finished_weight,
+        revision_notes: part.revision_notes || '',
+        uom: part.uom,
+        supplier_id: part.supplier_id,
+        supplier_code: part.supplier_code,
+        stock_material_id: part.stock_material_id,
+        stock_form: part.stock_form,
+        stock_dimensions: part.stock_dimensions,
+        created_by: user.id
+      });
+
+      if (revisionError) throw revisionError;
+
+      // Then update the part with new revision number and notes
+      const { error } = await supabase.from('parts').update({
+        part_number: newPartNumber,
+        revision_notes: revisionNotes.trim()
+      }).eq('id', part.id);
+
+      if (error) throw error;
+
+      // Refresh data to get the new revision in the history
+      await fetchData();
+
+      const updatedPart = { ...part, part_number: newPartNumber, revision_notes: revisionNotes.trim() };
+      setSelectedPart(updatedPart);
+      showToast(`Revision incremented to ${newPartNumber}`);
+    } catch (err) {
+      console.error('Error incrementing revision:', err);
+      showToast('Error incrementing revision', 'error');
     }
   };
 
@@ -1058,8 +1093,7 @@ function MainApp({ user, onLogout }) {
             <div className="nav-section">
               <div className="nav-section-title">Projects</div>
               <div className={`nav-item ${activeView === 'projects' ? 'active' : ''}`} onClick={() => { setActiveView('projects'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Briefcase /><span>All Projects</span></div>
-              <div className={`nav-item ${activeView === 'customers' ? 'active' : ''}`} onClick={() => { setActiveView('customers'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Users /><span>Customers</span></div>
-              <div className={`nav-item ${activeView === 'suppliers' ? 'active' : ''}`} onClick={() => { setActiveView('suppliers'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Truck /><span>Suppliers</span></div>
+              <div className={`nav-item ${activeView === 'contacts' ? 'active' : ''}`} onClick={() => { setActiveView('contacts'); setSelectedProject(null); setSelectedPart(null); setMobileMenuOpen(false); }}><Icons.Users /><span>Contacts</span></div>
             </div>
             <div className="nav-section">
               <div className="nav-section-title">Parts Management</div>
@@ -1073,12 +1107,11 @@ function MainApp({ user, onLogout }) {
           <main className="content-area">
             {activeView === 'projects' && !selectedProject && (<ProjectsView projects={projects} customers={customers} getCustomer={getCustomer} onSelectProject={setSelectedProject} onAddProject={() => setShowAddProjectModal(true)} />)}
             {activeView === 'projects' && selectedProject && (<ProjectDetailView project={selectedProject} customer={getCustomer(selectedProject.customer_id)} customers={customers} checkins={checkins} checkinItems={checkinItems} deliveryNotes={deliveryNotes} deliveryNoteItems={deliveryNoteItems} parts={parts} onBack={() => setSelectedProject(null)} onUpdateProject={handleUpdateProject} onAddNote={handleAddNote} onDeleteProject={handleDeleteProject} onAddCheckin={handleAddCheckin} onDeleteCheckin={handleDeleteCheckin} onAddDeliveryNote={handleAddDeliveryNote} onDeleteDeliveryNote={handleDeleteDeliveryNote} />)}
-            {activeView === 'customers' && (<CustomersView customers={customers} projects={projects} onAddCustomer={handleAddCustomer} onUpdateCustomer={handleUpdateCustomer} onDeleteCustomer={handleDeleteCustomer} />)}
-            {activeView === 'suppliers' && (<SuppliersView suppliers={suppliers} parts={parts} onAddSupplier={handleAddSupplier} onUpdateSupplier={handleUpdateSupplier} onDeleteSupplier={handleDeleteSupplier} />)}
+            {activeView === 'contacts' && (<ContactsView contacts={contacts} projects={projects} parts={parts} onAddContact={handleAddContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} />)}
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
             {activeView === 'machines' && (<MachinesView machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} partRevisions={partRevisions} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
             {activeView === 'bom-explorer' && (<BOMExplorerView parts={parts} suppliers={suppliers} materials={materials} bomRelations={bomRelations} />)}
             {activeView === 'order-materials' && (<OrderMaterialsView parts={parts} materials={materials} />)}
           </main>
@@ -2650,114 +2683,326 @@ function AddDeliveryNoteModal({ projectId, parts, checkinItems, onClose, onSave 
 }
 
 // ============================================
-// CUSTOMERS VIEW
+// CONTACTS VIEW (Unified Customers & Suppliers)
 // ============================================
-function CustomersView({ customers, projects, onAddCustomer, onUpdateCustomer, onDeleteCustomer }) {
+function ContactsView({ contacts, projects, parts, onAddContact, onUpdateContact, onDeleteContact }) {
+  const [roleFilter, setRoleFilter] = useState('all'); // 'all', 'customers', 'suppliers'
   const [searchQuery, setSearchQuery] = useState('');
-  const [newCustomer, setNewCustomer] = useState({ name: '', contact: '', email: '', phone: '', address: '' });
+  const [newContact, setNewContact] = useState({
+    name: '',
+    contact: '',
+    email: '',
+    phone: '',
+    address: '',
+    is_customer: true,
+    is_supplier: false
+  });
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
 
-  const filteredCustomers = customers.filter(customer => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return customer.name.toLowerCase().includes(query) ||
-           (customer.contact && customer.contact.toLowerCase().includes(query)) ||
-           (customer.email && customer.email.toLowerCase().includes(query));
+  // Filter contacts by role
+  const filteredContacts = contacts.filter(contact => {
+    const matchesRole = roleFilter === 'all' ||
+                       (roleFilter === 'customers' && contact.is_customer) ||
+                       (roleFilter === 'suppliers' && contact.is_supplier);
+    const matchesSearch = !searchQuery ||
+                         contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (contact.contact && contact.contact.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                         (contact.email && contact.email.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesRole && matchesSearch;
   }).sort((a, b) => a.name.localeCompare(b.name));
 
-  const handleAdd = () => {
-    if (!newCustomer.name) return;
-    onAddCustomer(newCustomer);
-    setNewCustomer({ name: '', contact: '', email: '', phone: '', address: '' });
+  // Calculate stats
+  const stats = {
+    total: contacts.length,
+    customers: contacts.filter(c => c.is_customer).length,
+    suppliers: contacts.filter(c => c.is_supplier).length,
+    both: contacts.filter(c => c.is_customer && c.is_supplier).length
   };
 
-  const startEdit = (customer) => {
-    setEditingId(customer.id);
-    setEditData({ ...customer });
+  const handleAdd = () => {
+    if (!newContact.name) return;
+    if (!newContact.is_customer && !newContact.is_supplier) {
+      alert('Contact must be marked as either Customer or Supplier (or both)');
+      return;
+    }
+    onAddContact(newContact);
+    setNewContact({ name: '', contact: '', email: '', phone: '', address: '', is_customer: true, is_supplier: false });
+  };
+
+  const startEdit = (contact) => {
+    setEditingId(contact.id);
+    setEditData({ ...contact });
   };
 
   const saveEdit = () => {
-    onUpdateCustomer(editingId, editData);
+    if (!editData.is_customer && !editData.is_supplier) {
+      alert('Contact must be marked as either Customer or Supplier (or both)');
+      return;
+    }
+    onUpdateContact(editingId, editData);
     setEditingId(null);
   };
 
-  const getProjectCount = (customerId) => projects.filter(p => p.customer_id === customerId).length;
-  const getActiveProjectCount = (customerId) => projects.filter(p => p.customer_id === customerId && p.status !== 'completed').length;
-  const getTotalValue = (customerId) => projects.filter(p => p.customer_id === customerId).reduce((sum, p) => sum + parseFloat(p.value || 0), 0);
+  const getProjectCount = (contactId) => projects.filter(p => p.customer_id === contactId).length;
+  const getActiveProjectCount = (contactId) => projects.filter(p => p.customer_id === contactId && p.status !== 'completed').length;
+  const getTotalValue = (contactId) => projects.filter(p => p.customer_id === contactId).reduce((sum, p) => sum + parseFloat(p.value || 0), 0);
+  const getPartCount = (contactId) => parts.filter(p => p.supplier_id === contactId).length;
+
+  const getRoleBadge = (contact) => {
+    if (contact.is_customer && contact.is_supplier) {
+      return (
+        <div style={{ display: 'flex', gap: 4 }}>
+          <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>Customer</span>
+          <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(251,146,60,0.15)', color: 'var(--accent-orange)' }}>Supplier</span>
+        </div>
+      );
+    } else if (contact.is_customer) {
+      return <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>Customer</span>;
+    } else {
+      return <span style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', padding: '3px 8px', borderRadius: '10px', background: 'rgba(251,146,60,0.15)', color: 'var(--accent-orange)' }}>Supplier</span>;
+    }
+  };
 
   return (
     <>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Customers</h1>
-          <p className="page-subtitle">Manage customer information</p>
+          <h1 className="page-title">Contacts</h1>
+          <p className="page-subtitle">Manage customers and suppliers</p>
         </div>
       </div>
 
-      <div className="search-box">
-        <Icons.Search />
-        <input type="text" placeholder="Search customers..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+      {/* Stats Row */}
+      <div className="stats-row">
+        <div className="stat-card">
+          <div className="stat-card-value">{stats.total}</div>
+          <div className="stat-card-label">Total Contacts</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-value" style={{ color: 'var(--accent-blue)' }}>{stats.customers}</div>
+          <div className="stat-card-label">Customers</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-value" style={{ color: 'var(--accent-orange)' }}>{stats.suppliers}</div>
+          <div className="stat-card-label">Suppliers</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-value" style={{ color: 'var(--accent-green)' }}>{stats.both}</div>
+          <div className="stat-card-label">Both Roles</div>
+        </div>
       </div>
 
+      {/* Search and Filter */}
+      <div className="search-box">
+        <Icons.Search />
+        <input
+          type="text"
+          placeholder="Search contacts..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      <div className="filter-row" style={{ marginBottom: 24 }}>
+        <button
+          className={`filter-btn ${roleFilter === 'all' ? 'active' : ''}`}
+          onClick={() => setRoleFilter('all')}
+        >
+          All<span className="count">{stats.total}</span>
+        </button>
+        <button
+          className={`filter-btn ${roleFilter === 'customers' ? 'active' : ''}`}
+          onClick={() => setRoleFilter('customers')}
+        >
+          Customers<span className="count">{stats.customers}</span>
+        </button>
+        <button
+          className={`filter-btn ${roleFilter === 'suppliers' ? 'active' : ''}`}
+          onClick={() => setRoleFilter('suppliers')}
+        >
+          Suppliers<span className="count">{stats.suppliers}</span>
+        </button>
+      </div>
+
+      {/* Add Contact Form */}
       <div className="card" style={{ marginBottom: 24 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Add New Customer</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Add New Contact</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
           <div className="form-group" style={{ margin: 0 }}>
             <label className="form-label">Company Name *</label>
-            <input type="text" className="form-input" placeholder="Company name" value={newCustomer.name} onChange={e => setNewCustomer({ ...newCustomer, name: e.target.value })} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Company name"
+              value={newContact.name}
+              onChange={e => setNewContact({ ...newContact, name: e.target.value })}
+            />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label className="form-label">Contact Person</label>
-            <input type="text" className="form-input" placeholder="Name" value={newCustomer.contact} onChange={e => setNewCustomer({ ...newCustomer, contact: e.target.value })} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Name"
+              value={newContact.contact}
+              onChange={e => setNewContact({ ...newContact, contact: e.target.value })}
+            />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label className="form-label">Email</label>
-            <input type="email" className="form-input" placeholder="email@company.com" value={newCustomer.email} onChange={e => setNewCustomer({ ...newCustomer, email: e.target.value })} />
+            <input
+              type="email"
+              className="form-input"
+              placeholder="email@company.com"
+              value={newContact.email}
+              onChange={e => setNewContact({ ...newContact, email: e.target.value })}
+            />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label className="form-label">Phone</label>
-            <input type="text" className="form-input" placeholder="Phone number" value={newCustomer.phone} onChange={e => setNewCustomer({ ...newCustomer, phone: e.target.value })} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Phone number"
+              value={newContact.phone}
+              onChange={e => setNewContact({ ...newContact, phone: e.target.value })}
+            />
           </div>
           <div className="form-group" style={{ margin: 0 }}>
             <label className="form-label">Address</label>
-            <input type="text" className="form-input" placeholder="Business address" value={newCustomer.address} onChange={e => setNewCustomer({ ...newCustomer, address: e.target.value })} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Business address"
+              value={newContact.address}
+              onChange={e => setNewContact({ ...newContact, address: e.target.value })}
+            />
           </div>
         </div>
-        <button className="btn btn-primary" onClick={handleAdd}><Icons.Plus /> Add Customer</button>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+            <input
+              type="checkbox"
+              checked={newContact.is_customer}
+              onChange={e => setNewContact({ ...newContact, is_customer: e.target.checked })}
+            />
+            <span>Customer</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14 }}>
+            <input
+              type="checkbox"
+              checked={newContact.is_supplier}
+              onChange={e => setNewContact({ ...newContact, is_supplier: e.target.checked })}
+            />
+            <span>Supplier</span>
+          </label>
+          <button className="btn btn-primary" onClick={handleAdd} style={{ marginLeft: 'auto' }}>
+            <Icons.Plus /> Add Contact
+          </button>
+        </div>
       </div>
 
+      {/* Contacts Table */}
       <div className="table-container">
         <table className="table">
           <thead>
             <tr>
               <th>Company</th>
+              <th>Role(s)</th>
               <th>Contact Person</th>
               <th>Email</th>
               <th>Phone</th>
-              <th>Projects</th>
+              <th>Usage</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {filteredCustomers.map(customer => {
-              const projectCount = getProjectCount(customer.id);
-              const activeCount = getActiveProjectCount(customer.id);
-              const totalValue = getTotalValue(customer.id);
-              const isEditing = editingId === customer.id;
+            {filteredContacts.map(contact => {
+              const projectCount = getProjectCount(contact.id);
+              const activeCount = getActiveProjectCount(contact.id);
+              const totalValue = getTotalValue(contact.id);
+              const partCount = getPartCount(contact.id);
+              const isEditing = editingId === contact.id;
 
               if (isEditing) {
                 return (
-                  <tr key={customer.id}>
-                    <td><input type="text" className="form-input" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="text" className="form-input" value={editData.contact || ''} onChange={e => setEditData({ ...editData, contact: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="email" className="form-input" value={editData.email || ''} onChange={e => setEditData({ ...editData, email: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="text" className="form-input" value={editData.phone || ''} onChange={e => setEditData({ ...editData, phone: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td>{projectCount} projects</td>
+                  <tr key={contact.id}>
+                    <td>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editData.name}
+                        onChange={e => setEditData({ ...editData, name: e.target.value })}
+                        style={{ padding: '6px 10px' }}
+                      />
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={editData.is_customer}
+                            onChange={e => setEditData({ ...editData, is_customer: e.target.checked })}
+                          />
+                          Customer
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={editData.is_supplier}
+                            onChange={e => setEditData({ ...editData, is_supplier: e.target.checked })}
+                          />
+                          Supplier
+                        </label>
+                      </div>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editData.contact || ''}
+                        onChange={e => setEditData({ ...editData, contact: e.target.value })}
+                        style={{ padding: '6px 10px' }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="email"
+                        className="form-input"
+                        value={editData.email || ''}
+                        onChange={e => setEditData({ ...editData, email: e.target.value })}
+                        style={{ padding: '6px 10px' }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={editData.phone || ''}
+                        onChange={e => setEditData({ ...editData, phone: e.target.value })}
+                        style={{ padding: '6px 10px' }}
+                      />
+                    </td>
+                    <td>
+                      {contact.is_customer && <div>{projectCount} projects</div>}
+                      {contact.is_supplier && <div>{partCount} parts</div>}
+                    </td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-ghost" onClick={saveEdit} style={{ color: 'var(--accent-green)' }}><Icons.Check /></button>
-                        <button className="btn btn-ghost" onClick={() => setEditingId(null)}><Icons.X /></button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={saveEdit}
+                          style={{ color: 'var(--accent-green)' }}
+                        >
+                          <Icons.Check />
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => setEditingId(null)}
+                        >
+                          <Icons.X />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -2765,24 +3010,58 @@ function CustomersView({ customers, projects, onAddCustomer, onUpdateCustomer, o
               }
 
               return (
-                <tr key={customer.id}>
-                  <td><strong>{customer.name}</strong></td>
-                  <td>{customer.contact || '-'}</td>
-                  <td>{customer.email ? <a href={`mailto:${customer.email}`} style={{ color: 'var(--accent-blue)' }}>{customer.email}</a> : '-'}</td>
-                  <td>{customer.phone || '-'}</td>
+                <tr key={contact.id}>
+                  <td>
+                    <strong>{contact.name}</strong>
+                  </td>
+                  <td>{getRoleBadge(contact)}</td>
+                  <td>{contact.contact || '-'}</td>
+                  <td>
+                    {contact.email ? (
+                      <a href={`mailto:${contact.email}`} style={{ color: 'var(--accent-blue)' }}>
+                        {contact.email}
+                      </a>
+                    ) : '-'}
+                  </td>
+                  <td>{contact.phone || '-'}</td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13 }}>
-                      <div>
-                        {projectCount} project{projectCount !== 1 ? 's' : ''}
-                        {activeCount > 0 && <span style={{ color: 'var(--accent-orange)', marginLeft: 4 }}>({activeCount} active)</span>}
-                      </div>
-                      {totalValue > 0 && <div style={{ fontFamily: 'monospace', color: 'var(--accent-green)', fontSize: 12 }}>£{totalValue.toLocaleString()}</div>}
+                      {contact.is_customer && (
+                        <div>
+                          {projectCount} project{projectCount !== 1 ? 's' : ''}
+                          {activeCount > 0 && (
+                            <span style={{ color: 'var(--accent-orange)', marginLeft: 4 }}>
+                              ({activeCount} active)
+                            </span>
+                          )}
+                          {totalValue > 0 && (
+                            <div style={{ fontFamily: 'monospace', color: 'var(--accent-green)', fontSize: 12 }}>
+                              £{totalValue.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {contact.is_supplier && (
+                        <div>{partCount} part{partCount !== 1 ? 's' : ''}</div>
+                      )}
                     </div>
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-ghost" onClick={() => startEdit(customer)}><Icons.Pencil /></button>
-                      <button className="btn btn-ghost" onClick={() => onDeleteCustomer(customer.id)} disabled={projectCount > 0} style={{ opacity: projectCount > 0 ? 0.3 : 1 }}><Icons.Trash /></button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => startEdit(contact)}
+                      >
+                        <Icons.Pencil />
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => onDeleteContact(contact.id)}
+                        disabled={(contact.is_customer && projectCount > 0) || (contact.is_supplier && partCount > 0)}
+                        style={{ opacity: ((contact.is_customer && projectCount > 0) || (contact.is_supplier && partCount > 0)) ? 0.3 : 1 }}
+                      >
+                        <Icons.Trash />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2792,149 +3071,10 @@ function CustomersView({ customers, projects, onAddCustomer, onUpdateCustomer, o
         </table>
       </div>
 
-      {filteredCustomers.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>No customers found</div>
-      )}
-    </>
-  );
-}
-
-// ============================================
-// SUPPLIERS VIEW
-// ============================================
-function SuppliersView({ suppliers, parts, onAddSupplier, onUpdateSupplier, onDeleteSupplier }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [newSupplier, setNewSupplier] = useState({ name: '', contact: '', email: '', phone: '', lead_time: 0 });
-  const [editingId, setEditingId] = useState(null);
-  const [editData, setEditData] = useState({});
-
-  const filteredSuppliers = suppliers.filter(supplier => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return supplier.name.toLowerCase().includes(query) ||
-           (supplier.contact && supplier.contact.toLowerCase().includes(query)) ||
-           (supplier.email && supplier.email.toLowerCase().includes(query));
-  }).sort((a, b) => a.name.localeCompare(b.name));
-
-  const handleAdd = () => {
-    if (!newSupplier.name) return;
-    onAddSupplier(newSupplier);
-    setNewSupplier({ name: '', contact: '', email: '', phone: '', lead_time: 0 });
-  };
-
-  const startEdit = (supplier) => {
-    setEditingId(supplier.id);
-    setEditData({ ...supplier });
-  };
-
-  const saveEdit = () => {
-    onUpdateSupplier(editingId, editData);
-    setEditingId(null);
-  };
-
-  const getPartCount = (supplierId) => parts.filter(p => p.supplier_id === supplierId).length;
-
-  return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Suppliers</h1>
-          <p className="page-subtitle">Manage supplier information</p>
+      {filteredContacts.length === 0 && (
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
+          No contacts found
         </div>
-      </div>
-
-      <div className="search-box">
-        <Icons.Search />
-        <input type="text" placeholder="Search suppliers..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-      </div>
-
-      <div className="card" style={{ marginBottom: 24 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Add New Supplier</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Company Name *</label>
-            <input type="text" className="form-input" placeholder="Company name" value={newSupplier.name} onChange={e => setNewSupplier({ ...newSupplier, name: e.target.value })} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Contact Person</label>
-            <input type="text" className="form-input" placeholder="Name" value={newSupplier.contact} onChange={e => setNewSupplier({ ...newSupplier, contact: e.target.value })} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Email</label>
-            <input type="email" className="form-input" placeholder="email@company.com" value={newSupplier.email} onChange={e => setNewSupplier({ ...newSupplier, email: e.target.value })} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Phone</label>
-            <input type="text" className="form-input" placeholder="Phone number" value={newSupplier.phone} onChange={e => setNewSupplier({ ...newSupplier, phone: e.target.value })} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label className="form-label">Lead Time (days)</label>
-            <input type="number" className="form-input" placeholder="0" value={newSupplier.lead_time} onChange={e => setNewSupplier({ ...newSupplier, lead_time: parseInt(e.target.value) || 0 })} />
-          </div>
-        </div>
-        <button className="btn btn-primary" onClick={handleAdd}><Icons.Plus /> Add Supplier</button>
-      </div>
-
-      <div className="table-container">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Company</th>
-              <th>Contact Person</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Lead Time</th>
-              <th>Parts</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSuppliers.map(supplier => {
-              const partCount = getPartCount(supplier.id);
-              const isEditing = editingId === supplier.id;
-
-              if (isEditing) {
-                return (
-                  <tr key={supplier.id}>
-                    <td><input type="text" className="form-input" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="text" className="form-input" value={editData.contact || ''} onChange={e => setEditData({ ...editData, contact: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="email" className="form-input" value={editData.email || ''} onChange={e => setEditData({ ...editData, email: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="text" className="form-input" value={editData.phone || ''} onChange={e => setEditData({ ...editData, phone: e.target.value })} style={{ padding: '6px 10px' }} /></td>
-                    <td><input type="number" className="form-input" value={editData.lead_time || 0} onChange={e => setEditData({ ...editData, lead_time: parseInt(e.target.value) || 0 })} style={{ padding: '6px 10px', width: 80 }} /></td>
-                    <td>{partCount} parts</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn-ghost" onClick={saveEdit} style={{ color: 'var(--accent-green)' }}><Icons.Check /></button>
-                        <button className="btn btn-ghost" onClick={() => setEditingId(null)}><Icons.X /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }
-
-              return (
-                <tr key={supplier.id}>
-                  <td><strong>{supplier.name}</strong></td>
-                  <td>{supplier.contact || '-'}</td>
-                  <td>{supplier.email ? <a href={`mailto:${supplier.email}`} style={{ color: 'var(--accent-blue)' }}>{supplier.email}</a> : '-'}</td>
-                  <td>{supplier.phone || '-'}</td>
-                  <td>{supplier.lead_time || 0} days</td>
-                  <td>{partCount} part{partCount !== 1 ? 's' : ''}</td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-ghost" onClick={() => startEdit(supplier)}><Icons.Pencil /></button>
-                      <button className="btn btn-ghost" onClick={() => onDeleteSupplier(supplier.id)} disabled={partCount > 0} style={{ opacity: partCount > 0 ? 0.3 : 1 }}><Icons.Trash /></button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {filteredSuppliers.length === 0 && (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>No suppliers found</div>
       )}
     </>
   );
@@ -3452,7 +3592,7 @@ function AddPartModal({ suppliers, materials, parts, onClose, onSave }) {
 // ============================================
 // PART DETAIL VIEW
 // ============================================
-function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, onBack, onUpdatePart, onDeletePart, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
+function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, partRevisions, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -3691,6 +3831,9 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
               <>
                 <button className="btn btn-secondary" onClick={startEdit}>
                   <Icons.Pencil /> Edit
+                </button>
+                <button className="btn btn-secondary" onClick={() => onIncrementRevision(part)} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)', color: 'white' }}>
+                  🔄 Increment Revision
                 </button>
                 <button className="btn btn-secondary" onClick={handleStatusToggle}>
                   {part.status === 'active' ? 'Mark as Obsolete' : 'Mark as Active'}
@@ -4475,6 +4618,78 @@ function PartDetailView({ part, parts, suppliers, materials, machines, bomRelati
             </div>
 
             {/* Revision History */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icons.FileText /> Revision History
+              </div>
+              {partRevisions.filter(r => r.part_id === part.id).length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {partRevisions
+                    .filter(r => r.part_id === part.id)
+                    .map(revision => (
+                      <div key={revision.id} className="card" style={{ background: 'var(--bg-secondary)', padding: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+                              <span style={{ fontFamily: 'monospace', color: 'var(--accent-blue)' }}>
+                                Revision {revision.revision_number}
+                              </span>
+                              <span style={{ marginLeft: 12, fontFamily: 'monospace', fontSize: 13, color: 'var(--text-muted)' }}>
+                                {revision.part_number}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                              Created: {formatDate(revision.created_at)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {revision.revision_notes && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: 'var(--text-muted)' }}>REVISION NOTES</div>
+                            <div style={{ padding: 10, background: 'rgba(0,0,0,0.2)', borderRadius: 4, fontSize: 13, whiteSpace: 'pre-wrap' }}>
+                              {revision.revision_notes}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Show key changes from this revision */}
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text-muted)' }}>SNAPSHOT</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, fontSize: 12 }}>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)' }}>Description:</span> {revision.description}
+                            </div>
+                            {revision.finished_weight && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Weight:</span> {parseFloat(revision.finished_weight).toFixed(3)} kg
+                              </div>
+                            )}
+                            {revision.stock_form && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)' }}>Stock Form:</span> {revision.stock_form.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                  No previous revisions. Revision history will appear here when you increment the revision.
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 24, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 8, borderLeft: '3px solid var(--accent-blue)' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                <strong>Note:</strong> When you click "Increment Revision", the current revision data is saved to history, and you can add notes explaining the changes made in the new revision.
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                This provides full traceability of all changes across revisions.
+              </div>
+            </div>
           </div>
         )}
       </div>
