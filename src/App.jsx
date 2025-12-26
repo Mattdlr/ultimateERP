@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Icons from './components/common/Icons';
+import ErrorBoundary from './components/common/ErrorBoundary';
+import LoadingSpinner from './components/common/LoadingSpinner';
+import ErrorState from './components/common/ErrorState';
 import StockCalculations from './utils/stockCalculations';
 import PartNumberUtils from './utils/partNumberUtils';
 import './styles/global.css';
@@ -302,6 +305,7 @@ function MainApp({ user, onLogout }) {
     deliveryNotes,
     deliveryNoteItems,
     loading: projectsLoading,
+    error: projectsError,
     refetch: refetchProjects
   } = useProjects();
 
@@ -312,6 +316,7 @@ function MainApp({ user, onLogout }) {
     getCustomer,
     getSupplier,
     loading: contactsLoading,
+    error: contactsError,
     refetch: refetchContacts
   } = useContacts();
 
@@ -319,37 +324,57 @@ function MainApp({ user, onLogout }) {
     parts,
     partRevisions,
     loading: partsLoading,
+    error: partsError,
     refetch: refetchParts
   } = useParts();
 
   const {
     materials,
     loading: materialsLoading,
+    error: materialsError,
     refetch: refetchMaterials
   } = useMaterials();
 
   const {
     machines,
     loading: machinesLoading,
+    error: machinesError,
     refetch: refetchMachines
   } = useMachines();
 
   const {
     bomRelations,
     loading: bomLoading,
+    error: bomError,
     refetch: refetchBOM
   } = useBOM();
 
   const {
     operations,
     loading: operationsLoading,
+    error: operationsError,
     refetch: refetchOperations
   } = useOperations();
 
-  // Combined loading state
+  // Combined loading and error states
   const loading = projectsLoading || contactsLoading || partsLoading ||
                   materialsLoading || machinesLoading || bomLoading ||
                   operationsLoading;
+
+  const hasError = projectsError || contactsError || partsError ||
+                   materialsError || machinesError || bomError ||
+                   operationsError;
+
+  // Retry all data fetching
+  const retryAll = () => {
+    refetchProjects();
+    refetchContacts();
+    refetchParts();
+    refetchMaterials();
+    refetchMachines();
+    refetchBOM();
+    refetchOperations();
+  };
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -911,8 +936,37 @@ function MainApp({ user, onLogout }) {
     }
   };
 
+  // Show loading spinner while initial data is loading
   if (loading) {
-    return (<div className="loading-container"><div className="spinner"></div><p style={{ color: 'var(--text-muted)' }}>Loading...</p></div>);
+    return (
+      <>
+        <style>{styles}</style>
+        <LoadingSpinner fullScreen message="Loading application data..." />
+      </>
+    );
+  }
+
+  // Show error state if any data failed to load
+  if (hasError) {
+    const errorMessages = [
+      projectsError && 'projects',
+      contactsError && 'contacts',
+      partsError && 'parts',
+      materialsError && 'materials',
+      machinesError && 'machines',
+      bomError && 'BOM',
+      operationsError && 'operations'
+    ].filter(Boolean).join(', ');
+
+    return (
+      <>
+        <style>{styles}</style>
+        <ErrorState
+          message={`Failed to load ${errorMessages}`}
+          onRetry={retryAll}
+        />
+      </>
+    );
   }
 
   const stats = {
@@ -1001,7 +1055,14 @@ export default function App() {
 
   const handleLogout = async () => { await authService.signOut(); setUser(null); };
 
-  if (loading) return (<><style>{styles}</style><div className="loading-container"><div className="spinner"></div><p style={{ color: '#a1a1a6' }}>Loading...</p></div></>);
+  if (loading) return (<><style>{styles}</style><LoadingSpinner fullScreen message="Loading..." /></>);
   if (!user) return (<><style>{styles}</style><LoginPage onLogin={setUser} /></>);
-  return <MainApp user={user} onLogout={handleLogout} />;
+  return (
+    <>
+      <style>{styles}</style>
+      <ErrorBoundary>
+        <MainApp user={user} onLogout={handleLogout} />
+      </ErrorBoundary>
+    </>
+  );
 }
