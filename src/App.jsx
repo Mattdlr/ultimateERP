@@ -14,6 +14,15 @@ import machineService from './services/machineService';
 import bomService from './services/bomService';
 import operationService from './services/operationService';
 
+// Import custom hooks
+import useProjects from './hooks/useProjects';
+import useContacts from './hooks/useContacts';
+import useParts from './hooks/useParts';
+import useMaterials from './hooks/useMaterials';
+import useMachines from './hooks/useMachines';
+import useBOM from './hooks/useBOM';
+import useOperations from './hooks/useOperations';
+
 // Import extracted view components
 import ProjectDetailView from './views/ProjectDetailView';
 import PartDetailView from './views/PartDetailView';
@@ -276,80 +285,76 @@ function LoginPage({ onLogin }) {
 // MAIN APP COMPONENT
 // ============================================
 function MainApp({ user, onLogout }) {
+  // UI state
   const [activeView, setActiveView] = useState('projects');
-  const [projects, setProjects] = useState([]);
-  const [contacts, setContacts] = useState([]); // Unified contacts (replaces customers and suppliers)
   const [selectedProject, setSelectedProject] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedPart, setSelectedPart] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [showAddProjectModal, setShowAddProjectModal] = useState(false);
-
-  // Parts management state
-  const [parts, setParts] = useState([]);
-  const [materials, setMaterials] = useState([]);
-  const [machines, setMachines] = useState([]);
-  const [bomRelations, setBomRelations] = useState([]);
-  const [operations, setOperations] = useState([]);
-  const [partRevisions, setPartRevisions] = useState([]);
-  const [selectedPart, setSelectedPart] = useState(null);
   const [showAddPartModal, setShowAddPartModal] = useState(false);
 
-  // Project check-ins state
-  const [checkins, setCheckins] = useState([]);
-  const [checkinItems, setCheckinItems] = useState([]);
+  // Custom hooks for data fetching
+  const {
+    projects,
+    checkins,
+    checkinItems,
+    deliveryNotes,
+    deliveryNoteItems,
+    loading: projectsLoading,
+    refetch: refetchProjects
+  } = useProjects();
 
-  // Delivery notes state
-  const [deliveryNotes, setDeliveryNotes] = useState([]);
-  const [deliveryNoteItems, setDeliveryNoteItems] = useState([]);
+  const {
+    contacts,
+    customers,
+    suppliers,
+    getCustomer,
+    getSupplier,
+    loading: contactsLoading,
+    refetch: refetchContacts
+  } = useContacts();
+
+  const {
+    parts,
+    partRevisions,
+    loading: partsLoading,
+    refetch: refetchParts
+  } = useParts();
+
+  const {
+    materials,
+    loading: materialsLoading,
+    refetch: refetchMaterials
+  } = useMaterials();
+
+  const {
+    machines,
+    loading: machinesLoading,
+    refetch: refetchMachines
+  } = useMachines();
+
+  const {
+    bomRelations,
+    loading: bomLoading,
+    refetch: refetchBOM
+  } = useBOM();
+
+  const {
+    operations,
+    loading: operationsLoading,
+    refetch: refetchOperations
+  } = useOperations();
+
+  // Combined loading state
+  const loading = projectsLoading || contactsLoading || partsLoading ||
+                  materialsLoading || machinesLoading || bomLoading ||
+                  operationsLoading;
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
-
-  useEffect(() => { fetchData(); }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const { data: contactsData } = await contactService.getAll();
-      const { data: projectsData } = await projectService.getAll();
-      const { data: materialsData } = await materialService.getAll();
-      const { data: partsData } = await partService.getAll();
-      const { data: machinesData } = await machineService.getAll();
-      const { data: bomData } = await bomService.getAll();
-      const { data: operationsData } = await operationService.getAll();
-      const { data: checkinsData } = await projectService.getCheckins();
-      const { data: checkinItemsData } = await projectService.getCheckinItems();
-      const { data: deliveryNotesData } = await projectService.getDeliveryNotes();
-      const { data: deliveryNoteItemsData } = await projectService.getDeliveryNoteItems();
-      const { data: partRevisionsData } = await partService.getRevisions();
-
-      setContacts(contactsData || []);
-      setProjects(projectsData || []);
-      setMaterials(materialsData || []);
-      setParts(partsData || []);
-      setMachines(machinesData || []);
-      setBomRelations(bomData || []);
-      setPartRevisions(partRevisionsData || []);
-      setOperations(operationsData || []);
-      setCheckins(checkinsData || []);
-      setCheckinItems(checkinItemsData || []);
-      setDeliveryNotes(deliveryNotesData || []);
-      setDeliveryNoteItems(deliveryNoteItemsData || []);
-    } catch (err) {
-      console.error('Error fetching data:', err);
-      showToast('Error loading data', 'error');
-    }
-    setLoading(false);
-  };
-
-  // Helper functions to get contacts by role
-  const customers = contacts.filter(c => c.is_customer && !c.deleted_at);
-  const suppliers = contacts.filter(c => c.is_supplier && !c.deleted_at);
-  const getCustomer = (customerId) => contacts.find(c => c.id === customerId);
-  const getSupplier = (supplierId) => contacts.find(c => c.id === supplierId);
 
   const getNextProjectNumber = () => {
     const maxNum = projects.reduce((max, p) => {
@@ -383,8 +388,8 @@ function MainApp({ user, onLogout }) {
         currentProjectNumber++; // Increment for next project
       }
 
-      // Update projects list with all new projects
-      setProjects([...createdProjects, ...projects]);
+      // Refetch projects to get updated list
+      await refetchProjects();
 
       // Show appropriate toast message
       if (numberOfCopies === 1) {
@@ -405,7 +410,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await projectService.update(projectId, updates);
       if (error) throw error;
-      setProjects(projects.map(p => p.id === projectId ? { ...p, ...updates } : p));
+      await refetchProjects();
       if (selectedProject?.id === projectId) setSelectedProject({ ...selectedProject, ...updates });
       showToast('Project updated');
     } catch (err) {
@@ -418,8 +423,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { data, error } = await projectService.addNote(projectId, text, user.id, user.email);
       if (error) throw error;
-      const updatedProjects = projects.map(p => p.id === projectId ? { ...p, project_notes: [...(p.project_notes || []), data] } : p);
-      setProjects(updatedProjects);
+      await refetchProjects();
       if (selectedProject?.id === projectId) setSelectedProject({ ...selectedProject, project_notes: [...(selectedProject.project_notes || []), data] });
       showToast('Note added');
     } catch (err) {
@@ -432,7 +436,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await projectService.delete(projectId);
       if (error) throw error;
-      setProjects(projects.filter(p => p.id !== projectId));
+      await refetchProjects();
       setSelectedProject(null);
       showToast('Project deleted');
     } catch (err) {
@@ -451,7 +455,7 @@ function MainApp({ user, onLogout }) {
         sync_status: 'local_only' // Default to local-only for new contacts
       }).select().single();
       if (error) throw error;
-      setContacts([...contacts, data].sort((a, b) => a.name.localeCompare(b.name)));
+      await refetchContacts();
       const roleLabel = data.is_customer && data.is_supplier ? 'Contact' : data.is_customer ? 'Customer' : 'Supplier';
       showToast(`${roleLabel} added`);
     } catch (err) {
@@ -464,7 +468,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await contactService.update(contactId, updates);
       if (error) throw error;
-      setContacts(contacts.map(c => c.id === contactId ? { ...c, ...updates } : c));
+      await refetchContacts();
       showToast('Contact updated');
     } catch (err) {
       console.error('Error updating contact:', err);
@@ -493,7 +497,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await contactService.delete(contactId);
       if (error) throw error;
-      setContacts(contacts.filter(c => c.id !== contactId));
+      await refetchContacts();
       showToast('Contact deleted');
     } catch (err) {
       console.error('Error deleting contact:', err);
@@ -516,7 +520,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { data, error } = await materialService.create(materialData);
       if (error) throw error;
-      setMaterials([...materials, data].sort((a, b) => a.name.localeCompare(b.name)));
+      await refetchMaterials();
       showToast('Material added');
     } catch (err) {
       console.error('Error adding material:', err);
@@ -528,7 +532,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await materialService.update(materialId, updates);
       if (error) throw error;
-      setMaterials(materials.map(m => m.id === materialId ? { ...m, ...updates } : m));
+      await refetchMaterials();
       showToast('Material updated');
     } catch (err) {
       console.error('Error updating material:', err);
@@ -542,7 +546,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await materialService.delete(materialId);
       if (error) throw error;
-      setMaterials(materials.filter(m => m.id !== materialId));
+      await refetchMaterials();
       showToast('Material deleted');
     } catch (err) {
       console.error('Error deleting material:', err);
@@ -581,7 +585,7 @@ function MainApp({ user, onLogout }) {
 
       const { data, error } = await partService.create(cleanData);
       if (error) throw error;
-      setParts([data, ...parts]);
+      await refetchParts();
       setShowAddPartModal(false);
       showToast(`Part ${data.part_number} created`);
     } catch (err) {
@@ -594,7 +598,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await partService.update(partId, updates);
       if (error) throw error;
-      setParts(parts.map(p => p.id === partId ? { ...p, ...updates } : p));
+      await refetchParts();
       if (selectedPart?.id === partId) setSelectedPart({ ...selectedPart, ...updates });
       showToast('Part updated');
     } catch (err) {
@@ -607,7 +611,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await partService.delete(partId);
       if (error) throw error;
-      setParts(parts.filter(p => p.id !== partId));
+      await refetchParts();
       setSelectedPart(null);
       showToast('Part deleted');
     } catch (err) {
@@ -680,7 +684,7 @@ function MainApp({ user, onLogout }) {
         position: position || null
       }).select().single();
       if (error) throw error;
-      setBomRelations([...bomRelations, data]);
+      await refetchBOM();
       showToast('BOM item added');
     } catch (err) {
       console.error('Error adding BOM item:', err);
@@ -692,7 +696,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await bomService.delete(bomId);
       if (error) throw error;
-      setBomRelations(bomRelations.filter(b => b.id !== bomId));
+      await refetchBOM();
       showToast('BOM item removed');
     } catch (err) {
       console.error('Error removing BOM item:', err);
@@ -704,7 +708,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await bomService.update(bomId, updates);
       if (error) throw error;
-      setBomRelations(bomRelations.map(b => b.id === bomId ? { ...b, ...updates } : b));
+      await refetchBOM();
       showToast('BOM item updated');
     } catch (err) {
       console.error('Error updating BOM item:', err);
@@ -719,7 +723,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { data, error } = await machineService.create(machineData);
       if (error) throw error;
-      setMachines([...machines, data].sort((a, b) => a.name.localeCompare(b.name)));
+      await refetchMachines();
       showToast('Machine added');
     } catch (err) {
       console.error('Error adding machine:', err);
@@ -731,7 +735,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await machineService.update(machineId, updates);
       if (error) throw error;
-      setMachines(machines.map(m => m.id === machineId ? { ...m, ...updates } : m));
+      await refetchMachines();
       showToast('Machine updated');
     } catch (err) {
       console.error('Error updating machine:', err);
@@ -743,7 +747,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await machineService.delete(machineId);
       if (error) throw error;
-      setMachines(machines.filter(m => m.id !== machineId));
+      await refetchMachines();
       showToast('Machine deleted');
     } catch (err) {
       console.error('Error deleting machine:', err);
@@ -758,7 +762,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { data, error } = await operationService.create(operationData);
       if (error) throw error;
-      setOperations([...operations, data]);
+      await refetchOperations();
       showToast('Operation added');
     } catch (err) {
       console.error('Error adding operation:', err);
@@ -770,7 +774,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await operationService.update(opId, updates);
       if (error) throw error;
-      setOperations(operations.map(op => op.id === opId ? { ...op, ...updates } : op));
+      await refetchOperations();
       showToast('Operation updated');
     } catch (err) {
       console.error('Error updating operation:', err);
@@ -782,7 +786,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await operationService.delete(opId);
       if (error) throw error;
-      setOperations(operations.filter(op => op.id !== opId));
+      await refetchOperations();
       showToast('Operation deleted');
     } catch (err) {
       console.error('Error deleting operation:', err);
@@ -823,8 +827,7 @@ function MainApp({ user, onLogout }) {
 
       if (itemsError) throw itemsError;
 
-      setCheckins([checkin, ...checkins]);
-      setCheckinItems([...checkinItems, ...items]);
+      await refetchProjects();
       showToast('Check-in added successfully');
     } catch (err) {
       console.error('Error adding check-in:', err);
@@ -836,8 +839,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await projectService.deleteCheckin(checkinId);
       if (error) throw error;
-      setCheckins(checkins.filter(c => c.id !== checkinId));
-      setCheckinItems(checkinItems.filter(item => item.checkin_id !== checkinId));
+      await refetchProjects();
       showToast('Check-in deleted');
     } catch (err) {
       console.error('Error deleting check-in:', err);
@@ -889,8 +891,7 @@ function MainApp({ user, onLogout }) {
 
       if (itemsError) throw itemsError;
 
-      setDeliveryNotes([deliveryNote, ...deliveryNotes]);
-      setDeliveryNoteItems([...deliveryNoteItems, ...items]);
+      await refetchProjects();
       showToast('Delivery note created successfully');
     } catch (err) {
       console.error('Error adding delivery note:', err);
@@ -902,8 +903,7 @@ function MainApp({ user, onLogout }) {
     try {
       const { error } = await projectService.deleteDeliveryNote(deliveryNoteId);
       if (error) throw error;
-      setDeliveryNotes(deliveryNotes.filter(dn => dn.id !== deliveryNoteId));
-      setDeliveryNoteItems(deliveryNoteItems.filter(item => item.delivery_note_id !== deliveryNoteId));
+      await refetchProjects();
       showToast('Delivery note deleted');
     } catch (err) {
       console.error('Error deleting delivery note:', err);
