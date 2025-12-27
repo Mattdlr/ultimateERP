@@ -13,6 +13,7 @@ export const machineService = {
     const { data, error } = await supabase
       .from('machines')
       .select('*')
+      .is('deleted_at', null)
       .order('name');
     return { data, error };
   },

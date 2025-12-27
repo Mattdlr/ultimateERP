@@ -13,6 +13,7 @@ export const materialService = {
     const { data, error } = await supabase
       .from('materials')
       .select('*')
+      .is('deleted_at', null)
       .order('name');
     return { data, error };
   },

@@ -28,7 +28,7 @@ export default function AddDeliveryNoteModal({ projectId, parts, checkinItems, o
       if (value) {
         const selectedPart = parts.find(p => p.id === value);
         if (selectedPart) {
-          newItems[index].description = `${selectedPart.part_number} - ${selectedPart.name}`;
+          newItems[index].description = `${selectedPart.part_number} - ${selectedPart.description}`;
         }
       }
     } else if (field === 'checkin_item_id') {
@@ -131,7 +131,7 @@ export default function AddDeliveryNoteModal({ projectId, parts, checkinItems, o
                           <option value="">-- Select a part --</option>
                           {parts.map(part => (
                             <option key={part.id} value={part.id}>
-                              {part.part_number} - {part.name}
+                              {part.part_number} - {part.description}
                             </option>
                           ))}
                         </select>

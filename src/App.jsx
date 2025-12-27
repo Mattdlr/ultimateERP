@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 import Icons from './components/common/Icons';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import LoadingSpinner from './components/common/LoadingSpinner';
@@ -475,10 +476,10 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddContact = async (contactData) => {
     try {
-      const { data, error} = await contactService.create({
+      const { data, error } = await contactService.create({
         ...contactData,
         sync_status: 'local_only' // Default to local-only for new contacts
-      }).select().single();
+      });
       if (error) throw error;
       await refetchContacts();
       const roleLabel = data.is_customer && data.is_supplier ? 'Contact' : data.is_customer ? 'Customer' : 'Supplier';
@@ -686,7 +687,7 @@ function MainApp({ user, onLogout }) {
       if (error) throw error;
 
       // Refresh data to get the new revision in the history
-      await fetchData();
+      await refetchParts();
 
       const updatedPart = { ...part, part_number: newPartNumber, revision_notes: revisionNotes.trim() };
       setSelectedPart(updatedPart);
@@ -702,12 +703,12 @@ function MainApp({ user, onLogout }) {
   // ============================================
   const handleAddBomItem = async (parentId, childId, quantity, position) => {
     try {
-      const { data, error } = await bomService.create({
+      const { error } = await bomService.create({
         parent_id: parentId,
         child_id: childId,
         quantity: quantity || 1,
         position: position || null
-      }).select().single();
+      });
       if (error) throw error;
       await refetchBOM();
       showToast('BOM item added');

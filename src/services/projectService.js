@@ -13,6 +13,7 @@ export const projectService = {
     const { data, error } = await supabase
       .from('projects')
       .select('*, project_notes (*)')
+      .is('deleted_at', null)
       .order('project_number', { ascending: false });
     return { data, error };
   },
@@ -75,6 +76,7 @@ export const projectService = {
     const { data, error } = await supabase
       .from('project_checkins')
       .select('*')
+      .is('deleted_at', null)
       .order('checkin_date', { ascending: false });
     return { data, error };
   },
@@ -107,6 +109,7 @@ export const projectService = {
     const { data, error } = await supabase
       .from('delivery_notes')
       .select('*')
+      .is('deleted_at', null)
       .order('delivery_date', { ascending: false });
     return { data, error };
   },

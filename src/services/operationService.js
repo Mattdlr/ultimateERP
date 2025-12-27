@@ -12,7 +12,8 @@ export const operationService = {
   async getAll() {
     const { data, error } = await supabase
       .from('operations')
-      .select('*');
+      .select('*')
+      .is('deleted_at', null);
     return { data, error };
   },
 
