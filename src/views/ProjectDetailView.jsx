@@ -11,6 +11,8 @@
 
 import React, { useState } from 'react';
 import Icons from '../components/common/Icons';
+import AddCheckinModal from '../components/modals/AddCheckinModal';
+import AddDeliveryNoteModal from '../components/modals/AddDeliveryNoteModal';
 
 export default function ProjectDetailView({ project, customer, customers, checkins, checkinItems, deliveryNotes, deliveryNoteItems, parts, onBack, onUpdateProject, onAddNote, onDeleteProject, onAddCheckin, onDeleteCheckin, onAddDeliveryNote, onDeleteDeliveryNote }) {
   const [activeTab, setActiveTab] = useState('details');

@@ -13,6 +13,7 @@ export const partService = {
     const { data, error } = await supabase
       .from('parts')
       .select('*')
+      .is('deleted_at', null)
       .order('part_number');
     return { data, error };
   },

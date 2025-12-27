@@ -30,13 +30,14 @@ export default function useContacts() {
   }, []);
 
   // Memoized filtered lists for customers and suppliers
+  // Note: deleted_at filtering is handled by contactService.getAll()
   const customers = useMemo(() =>
-    contacts.filter(c => c.is_customer && !c.deleted_at),
+    contacts.filter(c => c.is_customer),
     [contacts]
   );
 
   const suppliers = useMemo(() =>
-    contacts.filter(c => c.is_supplier && !c.deleted_at),
+    contacts.filter(c => c.is_supplier),
     [contacts]
   );
 
