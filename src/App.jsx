@@ -531,14 +531,6 @@ function MainApp({ user, onLogout }) {
     }
   };
 
-  // Legacy function names for backwards compatibility
-  const handleAddCustomer = handleAddContact;
-  const handleUpdateCustomer = handleUpdateContact;
-  const handleDeleteCustomer = handleDeleteContact;
-  const handleAddSupplier = handleAddContact;
-  const handleUpdateSupplier = handleUpdateContact;
-  const handleDeleteSupplier = handleDeleteContact;
-
   // ============================================
   // MATERIALS HANDLERS
   // ============================================
