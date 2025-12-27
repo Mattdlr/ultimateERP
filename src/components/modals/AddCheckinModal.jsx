@@ -32,7 +32,7 @@ export default function AddCheckinModal({ projectId, onClose, onSave }) {
       project_id: projectId,
       checkin_date: checkinDate,
       notes: notes.trim(),
-      items: validItems
+      items: validItems.map(item => ({ ...item, quantity: item.quantity || 1 }))
     });
 
     onClose();
@@ -95,7 +95,7 @@ export default function AddCheckinModal({ projectId, onClose, onSave }) {
                       className="form-input"
                       min="1"
                       value={item.quantity}
-                      onChange={e => updateItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                      onChange={e => updateItem(index, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value))}
                     />
                   </div>
                   <button

@@ -159,7 +159,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
   };
 
   const saveEditBom = () => {
-    onUpdateBomItem(editingBomId, editingBomData);
+    onUpdateBomItem(editingBomId, { ...editingBomData, quantity: editingBomData.quantity || 1 });
     setEditingBomId(null);
     setEditingBomData({});
   };
@@ -830,7 +830,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Quantity *</label>
-                      <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: parseInt(e.target.value) || 1 })} />
+                      <input type="number" className="form-input" min="1" value={newBomItem.quantity} onChange={e => setNewBomItem({ ...newBomItem, quantity: e.target.value === '' ? '' : parseInt(e.target.value) })} />
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Position</label>
@@ -840,7 +840,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
                   <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button className="btn btn-primary" onClick={() => {
                       if (!newBomItem.child_id) { alert('Please select a child part'); return; }
-                      onAddBomItem(part.id, newBomItem.child_id, newBomItem.quantity, newBomItem.position);
+                      onAddBomItem(part.id, newBomItem.child_id, newBomItem.quantity || 1, newBomItem.position);
                       setNewBomItem({ child_id: '', quantity: 1, position: '' });
                       setShowAddBomItem(false);
                     }}><Icons.Check /> Add</button>
@@ -889,7 +889,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
                                 min="1"
                                 step="0.01"
                                 value={editingBomData.quantity}
-                                onChange={e => setEditingBomData({ ...editingBomData, quantity: parseFloat(e.target.value) || 1 })}
+                                onChange={e => setEditingBomData({ ...editingBomData, quantity: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                                 style={{ padding: '6px 10px', fontSize: '13px', width: '80px' }}
                               />
                             </td>
