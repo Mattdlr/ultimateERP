@@ -160,7 +160,6 @@ CREATE TABLE parts (
   description TEXT NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('manufactured', 'purchased', 'assembly')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'obsolete')),
-  uom TEXT DEFAULT 'EA',
   notes TEXT, -- General notes that apply to all revisions
   revision_notes TEXT, -- Notes specific to current revision
   finished_weight DECIMAL(10, 4),
@@ -176,6 +175,17 @@ CREATE TABLE parts (
   deleted_at TIMESTAMPTZ
 );
 
+-- PART CUSTOMERS JUNCTION TABLE
+-- Many-to-many relationship between parts and customers
+-- Tracks which customers own which parts
+CREATE TABLE IF NOT EXISTS part_customers (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  part_id UUID NOT NULL REFERENCES parts(id) ON DELETE CASCADE,
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(part_id, customer_id)
+);
+
 -- PART REVISIONS TABLE
 CREATE TABLE IF NOT EXISTS part_revisions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -186,7 +196,6 @@ CREATE TABLE IF NOT EXISTS part_revisions (
   finished_weight DECIMAL(10, 4),
   revision_notes TEXT, -- Notes specific to this revision
   -- Snapshot of part data at this revision
-  uom TEXT,
   supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
   supplier_code TEXT,
   stock_material_id UUID REFERENCES materials(id) ON DELETE SET NULL,
@@ -299,6 +308,10 @@ CREATE INDEX idx_parts_deleted_at ON parts(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_part_revisions_part_id ON part_revisions(part_id);
 CREATE INDEX IF NOT EXISTS idx_part_revisions_created_at ON part_revisions(created_at DESC);
 
+-- Part customers indexes
+CREATE INDEX IF NOT EXISTS idx_part_customers_part_id ON part_customers(part_id);
+CREATE INDEX IF NOT EXISTS idx_part_customers_customer_id ON part_customers(customer_id);
+
 -- BOM indexes
 CREATE INDEX idx_bom_parent ON bom_relations(parent_id);
 CREATE INDEX idx_bom_child ON bom_relations(child_id);
@@ -327,6 +340,7 @@ ALTER TABLE delivery_note_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE part_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE part_customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bom_relations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE machines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE operations ENABLE ROW LEVEL SECURITY;
@@ -507,6 +521,17 @@ CREATE POLICY "Enable insert for authenticated users" ON part_revisions
 CREATE POLICY "Enable update for authenticated users" ON part_revisions
   FOR UPDATE
   USING (auth.role() = 'authenticated');
+
+-- Part customers policies
+CREATE POLICY "Enable read access for authenticated users" ON part_customers
+  FOR SELECT
+  USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Authenticated users can insert part_customers" ON part_customers
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can delete part_customers" ON part_customers
+  FOR DELETE TO authenticated USING (true);
 
 -- BOM relations policies
 CREATE POLICY "Authenticated users can read bom_relations" ON bom_relations

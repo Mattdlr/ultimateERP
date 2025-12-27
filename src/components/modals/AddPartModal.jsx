@@ -10,7 +10,6 @@ export default function AddPartModal({ suppliers, materials, parts, onClose, onS
     part_number: nextPartNumber,
     description: '',
     type: 'manufactured',
-    uom: 'EA',
     finished_weight: '',
     // Purchased part fields
     supplier_id: '',
@@ -99,10 +98,6 @@ export default function AddPartModal({ suppliers, materials, parts, onClose, onS
           <div className="form-group">
             <label className="form-label">Description *</label>
             <input type="text" className="form-input" placeholder="Part description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
-          </div>
-          <div className="form-group">
-            <label className="form-label">UOM</label>
-            <input type="text" className="form-input" placeholder="EA" value={formData.uom} onChange={e => setFormData({ ...formData, uom: e.target.value })} />
           </div>
 
           {/* Purchased Part Fields */}

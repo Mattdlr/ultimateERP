@@ -66,7 +66,7 @@ export default function PartsView({ parts, suppliers, materials, onSelectPart, o
       </div>
       <div className="table-container">
         <table className="table">
-          <thead><tr><th>Part Number</th><th>Description</th><th>Type</th><th>UOM</th><th>Supplier/Material</th><th>Stock Weight</th><th>Finished Weight</th><th></th></tr></thead>
+          <thead><tr><th>Part Number</th><th>Description</th><th>Type</th><th>Supplier/Material</th><th>Stock Weight</th><th>Finished Weight</th><th></th></tr></thead>
           <tbody>
             {filteredParts.map(part => {
               const supplier = getSupplier(part.supplier_id);
@@ -88,7 +88,6 @@ export default function PartsView({ parts, suppliers, materials, onSelectPart, o
                     background: `${getPartTypeBadgeColor(part.type)}22`,
                     color: getPartTypeBadgeColor(part.type)
                   }}>{getPartTypeLabel(part.type)}</span></td>
-                  <td>{part.uom || 'EA'}</td>
                   <td style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                     {part.type === 'purchased' && supplier ? supplier.name : ''}
                     {part.type === 'manufactured' && material ? material.name : ''}

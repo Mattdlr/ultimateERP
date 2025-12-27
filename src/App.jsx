@@ -324,6 +324,7 @@ function MainApp({ user, onLogout }) {
   const {
     parts,
     partRevisions,
+    partCustomers,
     loading: partsLoading,
     error: partsError,
     refetch: refetchParts
@@ -583,7 +584,6 @@ function MainApp({ user, onLogout }) {
         description: partData.description,
         type: partData.type,
         status: 'active',
-        uom: partData.uom || 'EA',
         finished_weight: partData.finished_weight || null,
         revision_notes: partData.revision_notes || null
       };
@@ -660,7 +660,6 @@ function MainApp({ user, onLogout }) {
         description: part.description,
         finished_weight: part.finished_weight,
         revision_notes: part.revision_notes || '',
-        uom: part.uom,
         supplier_id: part.supplier_id,
         supplier_code: part.supplier_code,
         stock_material_id: part.stock_material_id,
@@ -687,6 +686,33 @@ function MainApp({ user, onLogout }) {
     } catch (err) {
       console.error('Error incrementing revision:', err);
       showToast('Error incrementing revision', 'error');
+    }
+  };
+
+  // ============================================
+  // PART-CUSTOMER HANDLERS
+  // ============================================
+  const handleAddCustomerToPart = async (partId, customerId) => {
+    try {
+      const { error } = await partService.addCustomerToPart(partId, customerId);
+      if (error) throw error;
+      await refetchParts();
+      showToast('Customer assigned to part');
+    } catch (err) {
+      console.error('Error adding customer to part:', err);
+      showToast('Error adding customer to part', 'error');
+    }
+  };
+
+  const handleRemoveCustomerFromPart = async (partCustomerId) => {
+    try {
+      const { error } = await partService.removeCustomerFromPart(partCustomerId);
+      if (error) throw error;
+      await refetchParts();
+      showToast('Customer removed from part');
+    } catch (err) {
+      console.error('Error removing customer from part:', err);
+      showToast('Error removing customer from part', 'error');
     }
   };
 
@@ -1020,7 +1046,7 @@ function MainApp({ user, onLogout }) {
             {activeView === 'materials' && (<MaterialsView materials={materials} parts={parts} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} />)}
             {activeView === 'machines' && (<MachinesView machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} />)}
             {activeView === 'parts' && !selectedPart && (<PartsView parts={parts} suppliers={suppliers} materials={materials} onSelectPart={setSelectedPart} onAddPart={() => setShowAddPartModal(true)} />)}
-            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} partRevisions={partRevisions} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} />)}
+            {activeView === 'parts' && selectedPart && (<PartDetailView part={selectedPart} parts={parts} suppliers={suppliers} customers={customers} materials={materials} machines={machines} bomRelations={bomRelations} operations={operations} partRevisions={partRevisions} partCustomers={partCustomers} onBack={() => setSelectedPart(null)} onUpdatePart={handleUpdatePart} onDeletePart={handleDeletePart} onIncrementRevision={handleIncrementRevision} onAddBomItem={handleAddBomItem} onRemoveBomItem={handleRemoveBomItem} onUpdateBomItem={handleUpdateBomItem} onAddOperation={handleAddOperation} onUpdateOperation={handleUpdateOperation} onDeleteOperation={handleDeleteOperation} onAddCustomerToPart={handleAddCustomerToPart} onRemoveCustomerFromPart={handleRemoveCustomerFromPart} />)}
             {activeView === 'bom-explorer' && (<BOMExplorerView parts={parts} suppliers={suppliers} materials={materials} bomRelations={bomRelations} />)}
             {activeView === 'order-materials' && (<OrderMaterialsView parts={parts} materials={materials} />)}
           </main>

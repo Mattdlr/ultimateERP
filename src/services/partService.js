@@ -84,6 +84,50 @@ export const partService = {
       .select('*')
       .order('created_at', { ascending: false });
     return { data, error };
+  },
+
+  /**
+   * Get all part-customer relationships
+   */
+  async getPartCustomers() {
+    const { data, error } = await supabase
+      .from('part_customers')
+      .select('*');
+    return { data, error };
+  },
+
+  /**
+   * Add customer to part
+   */
+  async addCustomerToPart(partId, customerId) {
+    const { data, error } = await supabase
+      .from('part_customers')
+      .insert({ part_id: partId, customer_id: customerId })
+      .select()
+      .single();
+    return { data, error };
+  },
+
+  /**
+   * Remove customer from part
+   */
+  async removeCustomerFromPart(partCustomerId) {
+    const { error } = await supabase
+      .from('part_customers')
+      .delete()
+      .eq('id', partCustomerId);
+    return { error };
+  },
+
+  /**
+   * Get customers for a specific part
+   */
+  async getCustomersForPart(partId) {
+    const { data, error } = await supabase
+      .from('part_customers')
+      .select('*, customers(*)')
+      .eq('part_id', partId);
+    return { data, error };
   }
 };
 

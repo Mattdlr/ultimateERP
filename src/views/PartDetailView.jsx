@@ -16,7 +16,7 @@ import Icons from '../components/common/Icons';
 import StockCalculations from '../utils/stockCalculations';
 import PartNumberUtils from '../utils/partNumberUtils';
 
-export default function PartDetailView({ part, parts, suppliers, materials, machines, bomRelations, operations, partRevisions, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation }) {
+export default function PartDetailView({ part, parts, suppliers, customers, materials, machines, bomRelations, operations, partRevisions, partCustomers, onBack, onUpdatePart, onDeletePart, onIncrementRevision, onAddBomItem, onRemoveBomItem, onUpdateBomItem, onAddOperation, onUpdateOperation, onDeleteOperation, onAddCustomerToPart, onRemoveCustomerFromPart }) {
   const [activeTab, setActiveTab] = useState('details');
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
@@ -28,9 +28,15 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
   const [editingOperationData, setEditingOperationData] = useState({});
   const [editingBomId, setEditingBomId] = useState(null);
   const [editingBomData, setEditingBomData] = useState({});
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
 
   const supplier = suppliers.find(s => s.id === part.supplier_id);
   const material = materials.find(m => m.id === part.stock_material_id);
+
+  // Get customers for this part
+  const partCustomersList = partCustomers.filter(pc => pc.part_id === part.id);
+  const getCustomer = (customerId) => customers.find(c => c.id === customerId);
 
   // Get BOM items for this assembly
   const bomItems = bomRelations.filter(b => b.parent_id === part.id);
@@ -110,7 +116,6 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
   const startEdit = () => {
     setEditData({
       description: part.description,
-      uom: part.uom,
       finished_weight: part.finished_weight,
       supplier_id: part.supplier_id,
       supplier_code: part.supplier_code,
@@ -203,7 +208,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
   const tabs = [
     { id: 'details', label: 'Details', icon: Icons.FileText },
     { id: 'stock', label: 'Stock Material', icon: Icons.Package, show: part.type === 'manufactured' || part.type === 'assembly' },
-    { id: 'operations', label: 'Machining Operations', icon: Icons.Settings, show: part.type === 'manufactured' },
+    { id: 'operations', label: 'Manufacturing Processes', icon: Icons.Settings, show: part.type === 'manufactured' },
     { id: 'bom', label: 'Bill of Materials', icon: Icons.Layers, show: part.type === 'assembly' },
     { id: 'whereused', label: 'Where Used', icon: Icons.Search },
     { id: 'revisions', label: 'Revision History', icon: Icons.FileText }
@@ -312,20 +317,6 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
               <div className="info-card">
                 <div className="info-label">Part Number</div>
                 <div className="info-value" style={{ fontFamily: 'monospace', color: 'var(--accent-orange)' }}>{part.part_number}</div>
-              </div>
-              <div className="info-card">
-                <div className="info-label">UOM</div>
-                {isEditing ? (
-                  <select className="form-input" value={editData.uom || 'EA'} onChange={e => setEditData({ ...editData, uom: e.target.value })}>
-                    <option value="EA">EA (Each)</option>
-                    <option value="KG">KG (Kilogram)</option>
-                    <option value="M">M (Meter)</option>
-                    <option value="L">L (Liter)</option>
-                    <option value="SET">SET</option>
-                  </select>
-                ) : (
-                  <div className="info-value">{part.uom || 'EA'}</div>
-                )}
               </div>
               <div className="info-card">
                 <div className="info-label">Status</div>
@@ -470,6 +461,117 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Customer Assignment */}
+            <div className="card" style={{ marginTop: 24, background: 'var(--bg-tertiary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icons.Package /> Customer Assignment
+                </div>
+                {!isEditing && (
+                  <button className="btn btn-primary btn-sm" onClick={() => setShowAddCustomer(!showAddCustomer)}>
+                    <Icons.Plus /> Assign Customer
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Some parts may be owned by customers. If no customer is assigned, the part belongs to your company.
+              </div>
+
+              {/* Add Customer Form */}
+              {showAddCustomer && (
+                <div style={{ background: 'var(--bg-secondary)', padding: 16, borderRadius: 8, marginBottom: 16 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Select Customer</label>
+                    <select
+                      className="form-select"
+                      value={selectedCustomerId}
+                      onChange={e => setSelectedCustomerId(e.target.value)}
+                    >
+                      <option value="">-- Select Customer --</option>
+                      {customers
+                        .filter(c => !partCustomersList.find(pc => pc.customer_id === c.id))
+                        .map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        if (!selectedCustomerId) { alert('Please select a customer'); return; }
+                        onAddCustomerToPart(part.id, selectedCustomerId);
+                        setSelectedCustomerId('');
+                        setShowAddCustomer(false);
+                      }}
+                    >
+                      <Icons.Check /> Assign
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowAddCustomer(false);
+                        setSelectedCustomerId('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Assigned Customers List */}
+              {partCustomersList.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {partCustomersList.map(pc => {
+                    const customer = getCustomer(pc.customer_id);
+                    return customer ? (
+                      <div
+                        key={pc.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: 12,
+                          background: 'var(--bg-secondary)',
+                          borderRadius: 6,
+                          borderLeft: '3px solid var(--accent-blue)'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {customer.name}
+                          </div>
+                          {customer.email && (
+                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                              {customer.email}
+                            </div>
+                          )}
+                        </div>
+                        {!isEditing && (
+                          <button
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              if (confirm(`Remove ${customer.name} from this part?`)) {
+                                onRemoveCustomerFromPart(pc.id);
+                              }
+                            }}
+                            style={{ color: '#ef4444' }}
+                          >
+                            <Icons.Trash />
+                          </button>
+                        )}
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 6 }}>
+                  No customers assigned. This part belongs to your company.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -632,7 +734,7 @@ export default function PartDetailView({ part, parts, suppliers, materials, mach
           </div>
         )}
 
-        {/* Machining Operations Tab */}
+        {/* Manufacturing Processes Tab */}
         {activeTab === 'operations' && part.type === 'manufactured' && (
           <div>
             <div className="card" style={{ background: 'var(--bg-tertiary)' }}>
