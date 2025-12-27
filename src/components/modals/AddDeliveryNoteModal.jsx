@@ -58,7 +58,7 @@ export default function AddDeliveryNoteModal({ projectId, parts, checkinItems, o
       notes: notes.trim(),
       items: validItems.map(item => ({
         description: item.description,
-        quantity: item.quantity,
+        quantity: item.quantity || 1,
         part_id: item.part_id
       }))
     });
@@ -175,7 +175,7 @@ export default function AddDeliveryNoteModal({ projectId, parts, checkinItems, o
                           min="1"
                           step="0.01"
                           value={item.quantity}
-                          onChange={e => updateItem(index, 'quantity', parseFloat(e.target.value) || 1)}
+                          onChange={e => updateItem(index, 'quantity', e.target.value === '' ? '' : parseFloat(e.target.value))}
                         />
                       </div>
                       <button
